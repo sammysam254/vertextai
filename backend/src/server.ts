@@ -2,9 +2,9 @@
 // CallPulse Backend Server Entry Point
 // ==============================================
 
-import { app } from './app';
-import { config } from './lib/config';
-import { logger } from './lib/logger';
+import { app } from './app.js';
+import { config } from './lib/config.js';
+import { logger } from './lib/logger.js';
 
 // ==============================================
 // Start Server
@@ -13,8 +13,8 @@ import { logger } from './lib/logger';
 async function start() {
   try {
     // Import and register route handlers
-    const { voiceRoutes } = await import('./routes/voice');
-    const { smsRoutes } = await import('./routes/sms');
+    const { voiceRoutes } = await import('./routes/voice.js');
+    const { smsRoutes } = await import('./routes/sms.js');
 
     // Register routes
     await app.register(voiceRoutes, { prefix: '/api/v1/voice' });
