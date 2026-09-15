@@ -45,7 +45,7 @@ COPY --from=frontend-builder --chown=nodejs:nodejs /app/web/public ./public
 
 # Create startup script that runs both
 RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'cd /app/backend && node --loader tsx src/server.ts &' >> /app/start.sh && \
+    echo 'cd /app/backend && npx tsx src/server.ts &' >> /app/start.sh && \
     echo 'BACKEND_PID=$!' >> /app/start.sh && \
     echo 'cd /app && node server.js &' >> /app/start.sh && \
     echo 'FRONTEND_PID=$!' >> /app/start.sh && \
