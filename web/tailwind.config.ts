@@ -61,11 +61,11 @@ const config: Config = {
       fontSize: {
         'metric-large': [
           '3.5rem',
-          { lineHeight: '1', fontWeight: '700', fontFeatureSettings: '"tnum"' },
+          { lineHeight: '1', fontWeight: '700' },
         ],
         'metric-medium': [
           '2rem',
-          { lineHeight: '1.2', fontWeight: '600', fontFeatureSettings: '"tnum"' },
+          { lineHeight: '1.2', fontWeight: '600' },
         ],
       },
       borderRadius: {
