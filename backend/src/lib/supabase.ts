@@ -5,6 +5,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { config } from './config';
 import { createLogger } from './logger';
+import WebSocket from 'ws';
 
 const logger = createLogger('supabase');
 
@@ -28,6 +29,14 @@ export const supabase: SupabaseClient = createClient(
     },
     db: {
       schema: 'public',
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+    global: {
+      fetch: fetch.bind(globalThis),
     },
   }
 );
