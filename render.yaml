@@ -1,0 +1,76 @@
+services:
+  # ============================================
+  # Backend API Server (Fastify + WebSocket)
+  # ============================================
+  - type: web
+    name: callpulse-api
+    runtime: node
+    region: oregon
+    plan: starter
+    branch: main
+    buildCommand: cd backend && npm install && npm run build
+    startCommand: cd backend && npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5050
+      - key: BASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: callpulse-redis
+          property: connectionString
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: JWT_SECRET
+        generateValue: true
+      - key: LOG_LEVEL
+        value: info
+      - key: MASK_PII_IN_LOGS
+        value: true
+    autoDeploy: true
+
+  # ============================================
+  # Frontend Dashboard (Next.js Static Site)
+  # ============================================
+  - type: web
+    name: callpulse-web
+    runtime: static
+    region: oregon
+    branch: main
+    buildCommand: cd web && npm install && npm run build
+    staticPublishPath: ./web/out
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://callpulse-api.onrender.com/api/*
+    envVars:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: NEXT_PUBLIC_API_URL
+        value: https://callpulse-api.onrender.com
+    autoDeploy: true
+
+# ============================================
+# Managed Redis Cache
+# ============================================
+databases:
+  - name: callpulse-redis
+    plan: starter
+    region: oregon
+    ipAllowList: []

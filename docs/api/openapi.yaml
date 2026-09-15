@@ -1,0 +1,566 @@
+openapi: 3.0.3
+info:
+  title: CallPulse API
+  description: |
+    Multi-tenant AI Call Center & SMS Platform API
+    
+    ## Authentication
+    All internal API endpoints require JWT authentication via Supabase.
+    Twilio webhook endpoints use HMAC-SHA256 signature validation.
+    
+    ## Base URL
+    - Production: `https://callpulse-api.onrender.com`
+    - Development: `http://localhost:5050`
+  version: 1.0.0
+  contact:
+    name: CallPulse Support
+    email: support@callpulse.io
+
+servers:
+  - url: https://callpulse-api.onrender.com
+    description: Production
+  - url: http://localhost:5050
+    description: Local Development
+
+tags:
+  - name: Webhooks
+    description: Twilio webhook endpoints
+  - name: Calls
+    description: Call management endpoints
+  - name: Messages
+    description: SMS message endpoints
+  - name: Contacts
+    description: Contact management
+  - name: Organizations
+    description: Organization settings
+
+paths:
+  # ==================== WEBHOOKS ====================
+  /api/v1/voice/incoming:
+    post:
+      tags: [Webhooks]
+      summary: Handle incoming voice call
+      description: Twilio webhook for new inbound calls
+      security:
+        - TwilioSignature: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TwilioVoiceIncoming'
+      responses:
+        '200':
+          description: TwiML response
+          content:
+            application/xml:
+              schema:
+                type: string
+                example: |
+                  <?xml version="1.0" encoding="UTF-8"?>
+                  <Response>
+                    <Say>Welcome to CallPulse</Say>
+                    <Gather input="speech" action="/api/v1/voice/turn"/>
+                  </Response>
+
+  /api/v1/voice/turn:
+    post:
+      tags: [Webhooks]
+      summary: Handle voice conversation turn
+      description: Process speech input and generate AI response
+      security:
+        - TwilioSignature: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TwilioVoiceTurn'
+      responses:
+        '200':
+          description: TwiML response with AI reply
+          content:
+            application/xml:
+              schema:
+                type: string
+
+  /api/v1/voice/status:
+    post:
+      tags: [Webhooks]
+      summary: Handle call status updates
+      security:
+        - TwilioSignature: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TwilioStatusCallback'
+      responses:
+        '200':
+          description: Success
+
+  /api/v1/sms/incoming:
+    post:
+      tags: [Webhooks]
+      summary: Handle incoming SMS
+      security:
+        - TwilioSignature: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TwilioSMSIncoming'
+      responses:
+        '200':
+          description: TwiML response with AI reply
+
+  /api/v1/sms/status:
+    post:
+      tags: [Webhooks]
+      summary: Handle SMS delivery status
+      security:
+        - TwilioSignature: []
+      responses:
+        '200':
+          description: Success
+
+  # ==================== CALLS ====================
+  /api/v1/calls/dispatch:
+    post:
+      tags: [Calls]
+      summary: Initiate outbound call
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to_number, from_number]
+              properties:
+                to_number:
+                  type: string
+                  example: "+15550123"
+                from_number:
+                  type: string
+                  example: "+15550000"
+      responses:
+        '200':
+          description: Call initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Communication'
+
+  /api/v1/communications:
+    get:
+      tags: [Calls]
+      summary: List communications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [voice, sms]
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Paginated list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCommunications'
+
+  /api/v1/communications/{id}:
+    get:
+      tags: [Calls]
+      summary: Get communication details
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Communication with transcript
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationDetail'
+
+  # ==================== MESSAGES ====================
+  /api/v1/messages/send:
+    post:
+      tags: [Messages]
+      summary: Send outbound SMS
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to_number, from_number, body]
+              properties:
+                to_number:
+                  type: string
+                from_number:
+                  type: string
+                body:
+                  type: string
+                  maxLength: 1600
+      responses:
+        '200':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+
+  /api/v1/messages/{communicationId}:
+    get:
+      tags: [Messages]
+      summary: Get message thread
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: communicationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Message history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+
+  # ==================== CONTACTS ====================
+  /api/v1/contacts:
+    get:
+      tags: [Contacts]
+      summary: List contacts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Paginated contacts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedContacts'
+    post:
+      tags: [Contacts]
+      summary: Create contact
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactInput'
+      responses:
+        '201':
+          description: Contact created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+
+  /api/v1/contacts/{id}:
+    patch:
+      tags: [Contacts]
+      summary: Update contact
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactInput'
+      responses:
+        '200':
+          description: Contact updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+
+  # ==================== HEALTH ====================
+  /api/v1/health:
+    get:
+      tags: [System]
+      summary: Health check
+      responses:
+        '200':
+          description: Service health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  services:
+                    type: object
+                    properties:
+                      redis:
+                        type: object
+                      database:
+                        type: object
+                      twilio:
+                        type: object
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    TwilioSignature:
+      type: apiKey
+      in: header
+      name: X-Twilio-Signature
+
+  schemas:
+    Communication:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        contact_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [voice, sms]
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        status:
+          type: string
+          enum: [queued, ringing, in-progress, completed, failed]
+        from_number:
+          type: string
+        to_number:
+          type: string
+        duration_seconds:
+          type: integer
+        escalated_at:
+          type: string
+          format: date-time
+        ai_summary:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CommunicationDetail:
+      allOf:
+        - $ref: '#/components/schemas/Communication'
+        - type: object
+          properties:
+            transcript:
+              type: array
+              items:
+                $ref: '#/components/schemas/TranscriptTurn'
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/Message'
+
+    TranscriptTurn:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        speaker:
+          type: string
+          enum: [customer, ai, agent]
+        content:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        communication_id:
+          type: string
+          format: uuid
+        sender:
+          type: string
+          enum: [customer, agent, ai]
+        body:
+          type: string
+        status:
+          type: string
+          enum: [queued, sent, delivered, failed, read]
+        created_at:
+          type: string
+          format: date-time
+
+    Contact:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        phone_number:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        total_interactions:
+          type: integer
+        last_contacted_at:
+          type: string
+          format: date-time
+
+    ContactInput:
+      type: object
+      required: [phone_number]
+      properties:
+        phone_number:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    PaginatedCommunications:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Communication'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    PaginatedContacts:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contact'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+    TwilioVoiceIncoming:
+      type: object
+      properties:
+        CallSid:
+          type: string
+        From:
+          type: string
+        To:
+          type: string
+        CallStatus:
+          type: string
+
+    TwilioVoiceTurn:
+      type: object
+      properties:
+        CallSid:
+          type: string
+        SpeechResult:
+          type: string
+        Confidence:
+          type: number
+
+    TwilioStatusCallback:
+      type: object
+      properties:
+        CallSid:
+          type: string
+        CallStatus:
+          type: string
+        CallDuration:
+          type: string
+
+    TwilioSMSIncoming:
+      type: object
+      properties:
+        MessageSid:
+          type: string
+        From:
+          type: string
+        To:
+          type: string
+        Body:
+          type: string
