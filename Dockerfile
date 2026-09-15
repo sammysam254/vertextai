@@ -1,10 +1,10 @@
 # ==============================================
-# Simplified Dockerfile - Next.js with API rewrites
+# Simplified Dockerfile - Use tsx to run TypeScript directly
 # ==============================================
 
 FROM node:20-alpine AS base
 
-# Stage 1: Build Backend
+# Stage 1: Install Backend Dependencies
 FROM base AS backend-builder
 WORKDIR /app/backend
 
@@ -12,7 +12,6 @@ COPY backend/package*.json ./
 RUN npm install
 
 COPY backend ./
-RUN npm run build && npm prune --production
 
 # Stage 2: Build Frontend  
 FROM base AS frontend-builder
@@ -33,10 +32,11 @@ WORKDIR /app
 RUN apk add --no-cache dumb-init
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
-# Copy backend
-COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/dist ./backend/dist
+# Copy backend source and node_modules (run with tsx, no build needed)
+COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/src ./backend/src
 COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/node_modules ./backend/node_modules
 COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/package.json ./backend/
+COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/tsconfig.json ./backend/
 
 # Copy Next.js standalone
 COPY --from=frontend-builder --chown=nodejs:nodejs /app/web/.next/standalone ./
@@ -45,7 +45,7 @@ COPY --from=frontend-builder --chown=nodejs:nodejs /app/web/public ./public
 
 # Create startup script that runs both
 RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'cd /app/backend && node dist/server.js &' >> /app/start.sh && \
+    echo 'cd /app/backend && node --loader tsx src/server.ts &' >> /app/start.sh && \
     echo 'BACKEND_PID=$!' >> /app/start.sh && \
     echo 'cd /app && node server.js &' >> /app/start.sh && \
     echo 'FRONTEND_PID=$!' >> /app/start.sh && \
