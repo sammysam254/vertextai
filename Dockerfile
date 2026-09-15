@@ -44,14 +44,14 @@ COPY --from=frontend-builder --chown=nodejs:nodejs /app/web/.next/static ./.next
 COPY --from=frontend-builder --chown=nodejs:nodejs /app/web/public ./public
 
 # Create startup script that runs both
-RUN echo '#!/bin/sh\n\
-cd /app/backend && node dist/server.js &\n\
-BACKEND_PID=$!\n\
-cd /app && node server.js &\n\
-FRONTEND_PID=$!\n\
-wait $BACKEND_PID $FRONTEND_PID' > /app/start.sh && \
-chmod +x /app/start.sh && \
-chown nodejs:nodejs /app/start.sh
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'cd /app/backend && node dist/server.js &' >> /app/start.sh && \
+    echo 'BACKEND_PID=$!' >> /app/start.sh && \
+    echo 'cd /app && node server.js &' >> /app/start.sh && \
+    echo 'FRONTEND_PID=$!' >> /app/start.sh && \
+    echo 'wait $BACKEND_PID $FRONTEND_PID' >> /app/start.sh && \
+    chmod +x /app/start.sh && \
+    chown nodejs:nodejs /app/start.sh
 
 ENV NODE_ENV=production
 EXPOSE 3000
@@ -61,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 ENTRYPOINT ["dumb-init", "--"]
-CMD ["/app/start.sh"]
+CMD ["sh", "/app/start.sh"]
