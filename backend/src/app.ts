@@ -6,9 +6,12 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import websocket from '@fastify/websocket';
+import fastifyStatic from '@fastify/static';
 import { config } from './lib/config';
 import { redis, checkRedisHealth, getCacheMetrics } from './lib/redis';
 import { checkDatabaseHealth } from './lib/supabase';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Create Fastify instance
 export const app = Fastify({
@@ -70,6 +73,36 @@ await app.register(websocket, {
     clientTracking: true,
   },
 });
+
+// Static file serving for Next.js frontend (production only)
+if (config.nodeEnv === 'production') {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const nextStaticPath = path.join(__dirname, '..', 'public');
+
+  // Serve Next.js static files
+  await app.register(fastifyStatic, {
+    root: nextStaticPath,
+    prefix: '/',
+    decorateReply: false,
+  });
+
+  app.log.info({ path: nextStaticPath }, 'Serving Next.js static files');
+
+  // Fallback to index.html for client-side routing (must be registered after API routes)
+  app.setNotFoundHandler((request, reply) => {
+    // If it's an API request, return 404 JSON
+    if (request.url.startsWith('/api/')) {
+      return reply.status(404).send({
+        error: 'Not Found',
+        message: `Route ${request.method} ${request.url} not found`,
+        statusCode: 404,
+      });
+    }
+    // Otherwise serve the Next.js index.html for client-side routing
+    return reply.sendFile('index.html', nextStaticPath);
+  });
+}
 
 // ==============================================
 // Global Hooks
@@ -184,16 +217,18 @@ app.get('/', async () => {
 });
 
 // ==============================================
-// 404 Handler
+// 404 Handler (Development only - production handled in static serving)
 // ==============================================
 
-app.setNotFoundHandler((request, reply) => {
-  reply.status(404).send({
-    error: 'Not Found',
-    message: `Route ${request.method} ${request.url} not found`,
-    statusCode: 404,
+if (config.nodeEnv !== 'production') {
+  app.setNotFoundHandler((request, reply) => {
+    reply.status(404).send({
+      error: 'Not Found',
+      message: `Route ${request.method} ${request.url} not found`,
+      statusCode: 404,
+    });
   });
-});
+}
 
 // ==============================================
 // Global Error Handler
