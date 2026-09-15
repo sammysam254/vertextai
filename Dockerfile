@@ -27,13 +27,16 @@ WORKDIR /app/backend
 
 # Copy backend package files
 COPY backend/package*.json ./
-RUN npm install --production
+RUN npm install
 
 # Copy backend source
 COPY backend ./
 
 # Build TypeScript backend
 RUN npm run build
+
+# Remove dev dependencies after build
+RUN npm prune --production
 
 # Stage 3: Production Runtime
 FROM node:20-alpine AS runner
