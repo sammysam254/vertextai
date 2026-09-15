@@ -33,7 +33,7 @@ interface NavItemProps {
 function NavItem({ href, icon: Icon, label, badge, isActive }: NavItemProps) {
   return (
     <Link
-      href={href}
+      href={href as any}
       className={cn(
         'nav-item',
         isActive && 'nav-item-active'
