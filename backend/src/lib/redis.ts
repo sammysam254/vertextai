@@ -41,9 +41,14 @@ const getRedisConfig = (): RedisOptions => {
     host: config.redisHost,
     port: config.redisPort,
     password: config.redisPassword,
-    maxRetriesPerRequest: 3,
+    maxRetriesPerRequest: null,
     retryStrategy: (times: number) => {
-      const delay = Math.min(times * 50, 2000);
+      // Stop retrying after 3 attempts if Redis is not available
+      if (times > 3) {
+        logger.warn('Redis not available, disabling retries');
+        return null; // stop retrying
+      }
+      const delay = Math.min(times * 50, 500);
       logger.warn(`Redis connection retry #${times}, delay: ${delay}ms`);
       return delay;
     },

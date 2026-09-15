@@ -45,9 +45,11 @@ COPY --from=frontend-builder --chown=nodejs:nodejs /app/web/public ./public
 
 # Create startup script that runs both
 RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'cd /app/backend && npx tsx src/server.ts &' >> /app/start.sh && \
+    echo 'export PORT=3000' >> /app/start.sh && \
+    echo 'export BACKEND_PORT=5050' >> /app/start.sh && \
+    echo 'cd /app/backend && PORT=5050 npx tsx src/server.ts &' >> /app/start.sh && \
     echo 'BACKEND_PID=$!' >> /app/start.sh && \
-    echo 'cd /app && node server.js &' >> /app/start.sh && \
+    echo 'cd /app && PORT=3000 node server.js &' >> /app/start.sh && \
     echo 'FRONTEND_PID=$!' >> /app/start.sh && \
     echo 'wait $BACKEND_PID $FRONTEND_PID' >> /app/start.sh && \
     chmod +x /app/start.sh && \
