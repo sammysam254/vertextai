@@ -99,6 +99,35 @@ export function generateEscalationTwiML(params: {
 }
 
 /**
+ * Generate transfer TwiML (connect caller to agent)
+ */
+export function generateTransferTwiML(params: {
+  agentNumber: string;
+  voiceId: string;
+  statusUrl: string;
+  transferMessage?: string;
+}): string {
+  const { 
+    agentNumber, 
+    voiceId, 
+    statusUrl,
+    transferMessage = 'Please hold while I transfer you to an agent.' 
+  } = params;
+
+  logger.info({ agentNumber }, 'Generating transfer TwiML');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="${escapeXml(voiceId)}">${escapeXml(transferMessage)}</Say>
+  <Dial timeout="30" action="${escapeXml(statusUrl)}">
+    ${escapeXml(agentNumber)}
+  </Dial>
+  <Say voice="${escapeXml(voiceId)}">I'm sorry, the agent is not available. Please call back later.</Say>
+  <Hangup/>
+</Response>`;
+}
+
+/**
  * Generate error TwiML (fallback)
  */
 export function generateErrorTwiML(params: {

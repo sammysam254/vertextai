@@ -37,3 +37,16 @@ export {
   getMessageThread,
   listRecentMessages,
 } from './message.service';
+
+// Agent services
+export {
+  createAgent,
+  getAgentById,
+  getAgentByPhone,
+  listOrganizationAgents,
+  updateAgentStatus,
+  updateAgent,
+  deleteAgent,
+  getAvailableAgents,
+  findOrCreateAgent,
+} from './agent.service';

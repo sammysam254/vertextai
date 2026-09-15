@@ -44,6 +44,9 @@ export interface Communication {
   escalated_to_human: boolean;
   escalation_reason: string | null;
   escalation_timestamp: string | null;
+  transferred_to_agent_id: string | null;
+  transferred_at: string | null;
+  transfer_status: 'pending' | 'completed' | 'failed' | 'busy' | 'no_answer' | null;
   summary: string | null;
   sentiment: string | null;
   intent: string | null;
@@ -70,6 +73,21 @@ export interface CallTranscript {
   content: string;
   confidence: number | null;
   timestamp: string;
+}
+
+export interface Agent {
+  id: string;
+  organization_id: string;
+  name: string;
+  phone_number: string;
+  email: string | null;
+  status: 'available' | 'in_call' | 'busy' | 'offline';
+  is_active: boolean;
+  user_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  last_status_change_at: string;
 }
 
 // ==============================================
@@ -198,4 +216,18 @@ export interface ListCommunicationsQuery {
   endDate?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface TransferCallRequest {
+  callSid: string;
+  agentPhoneNumber?: string;
+  agentId?: string;
+  organizationId: string;
+}
+
+export interface TransferCallResponse {
+  success: boolean;
+  message: string;
+  transferredAt: string;
+  agentId?: string;
 }

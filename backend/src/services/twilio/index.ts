@@ -7,6 +7,7 @@ export {
   generateGreetingTwiML,
   generateTurnTwiML,
   generateEscalationTwiML,
+  generateTransferTwiML,
   generateErrorTwiML,
   generateSMSReplyTwiML,
   generateEmptySMSTwiML,

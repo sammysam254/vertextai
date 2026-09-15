@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Home,
   Briefcase,
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
+import { createClient } from '@/lib/supabase/client';
 
 interface NavItemProps {
   href: string;
@@ -95,6 +96,7 @@ function ExpandableNavItem({ icon: Icon, label, children }: ExpandableNavItemPro
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const isActive = (path: string) => {
@@ -102,6 +104,12 @@ export function Sidebar() {
       return pathname === '/dashboard';
     }
     return pathname.startsWith(path);
+  };
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
   };
 
   const sidebarContent = (
@@ -231,7 +239,10 @@ export function Sidebar() {
           label="PROFILE"
           isActive={isActive('/dashboard/profile')}
         />
-        <button className="nav-item w-full text-left text-accent-danger hover:bg-accent-danger/10">
+        <button 
+          onClick={handleLogout}
+          className="nav-item w-full text-left text-accent-danger hover:bg-accent-danger/10"
+        >
           <LogOut className="h-4 w-4" />
           <span>LOGOUT</span>
         </button>
