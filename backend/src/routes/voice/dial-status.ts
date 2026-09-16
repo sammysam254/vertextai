@@ -101,6 +101,6 @@ export async function handleDialStatus(
     }
   }
 
-  // Always 200 to Twilio
-  return reply.status(200).send({ received: true });
+  // Return valid TwiML to Twilio so it hangs up cleanly without syntax errors
+  return reply.status(200).type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
 }

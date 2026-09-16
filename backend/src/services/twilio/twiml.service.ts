@@ -3,6 +3,8 @@
 // ==============================================
 
 import { createLogger } from '@/lib/logger';
+import { config } from '@/lib/config';
+import { normalizePhoneNumber } from '@/lib/phone';
 
 const logger = createLogger('twilio:twiml');
 
@@ -11,7 +13,7 @@ const logger = createLogger('twilio:twiml');
 // ==============================================
 
 function escapeXml(unsafe: string): string {
-  return unsafe
+  return (unsafe || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -84,18 +86,25 @@ export function generateEscalationTwiML(params: {
   escalationNumber?: string;
   voiceId: string;
   statusUrl: string;
+  callerId?: string;
 }): string {
-  const { escalationNumber, voiceId, statusUrl } = params;
+  const {
+    escalationNumber,
+    voiceId,
+    statusUrl,
+    callerId = config.twilioPhoneNumber || '+12513571708',
+  } = params;
 
-  logger.info({ escalationNumber }, 'Generating escalation TwiML');
+  const normalizedNumber = normalizePhoneNumber(escalationNumber || '');
 
-  if (escalationNumber && escalationNumber.trim().length > 3) {
+  logger.info({ escalationNumber: normalizedNumber, callerId }, 'Generating escalation TwiML');
+
+  if (normalizedNumber && normalizedNumber.trim().length > 3) {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="${escapeXml(voiceId)}">Please hold while I connect you to an available agent.</Say>
-  <Play>${HOLD_MUSIC}</Play>
-  <Dial timeout="30" action="${escapeXml(statusUrl)}">
-    ${escapeXml(escalationNumber)}
+  <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(statusUrl)}">
+    ${escapeXml(normalizedNumber)}
   </Dial>
   <Say voice="${escapeXml(voiceId)}">I'm sorry, all agents are currently busy. Please leave your message after the tone.</Say>
   <Record timeout="10" maxLength="60"/>
@@ -105,8 +114,6 @@ export function generateEscalationTwiML(params: {
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="${escapeXml(voiceId)}">Please enjoy this music while we connect you to customer care.</Say>
-  <Play>${HOLD_MUSIC}</Play>
   <Say voice="${escapeXml(voiceId)}">Please leave your name and contact number after the beep, and an agent will call you back shortly.</Say>
   <Record timeout="10" maxLength="60"/>
   <Hangup/>
@@ -121,24 +128,27 @@ export function generateTransferTwiML(params: {
   voiceId: string;
   statusUrl: string;
   transferMessage?: string;
+  callerId?: string;
 }): string {
   const { 
     agentNumber, 
     voiceId, 
     statusUrl,
-    transferMessage = 'Please hold while I transfer you to an agent.' 
+    transferMessage = 'Please hold while I transfer you to an agent.',
+    callerId = config.twilioPhoneNumber || '+12513571708',
   } = params;
 
-  logger.info({ agentNumber }, 'Generating transfer TwiML');
+  const normalizedNumber = normalizePhoneNumber(agentNumber || '');
+
+  logger.info({ agentNumber: normalizedNumber, callerId }, 'Generating transfer TwiML');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="${escapeXml(voiceId)}">${escapeXml(transferMessage)}</Say>
-  <Play>${HOLD_MUSIC}</Play>
-  <Dial timeout="30" action="${escapeXml(statusUrl)}">
-    ${escapeXml(agentNumber)}
+  <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(statusUrl)}">
+    ${escapeXml(normalizedNumber)}
   </Dial>
-  <Say voice="${escapeXml(voiceId)}">I'm sorry, the agent is not available right now. Please leave a message.</Say>
+  <Say voice="${escapeXml(voiceId)}">I'm sorry, the agent is not answering right now. Please leave a message after the tone.</Say>
   <Record timeout="10" maxLength="60"/>
   <Hangup/>
 </Response>`;

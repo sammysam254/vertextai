@@ -193,18 +193,25 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
    * Returns <Dial> TwiML that bridges caller → agent.
    */
   fastify.all('/transfer-twiml', async (request, reply) => {
-    const { agentPhone, agentId, callSid } =
-      (request.query as any) || {};
+    const query = (request.query as any) || {};
+    const body = (request.body as any) || {};
+    const agentPhone = query.agentPhone || body.agentPhone || '';
+    const agentId = query.agentId || body.agentId || '';
+    const callSid = query.callSid || body.callSid || '';
 
     const dialStatusUrl = `${config.baseUrl}/api/v1/voice/dial-status`;
-
     const voiceId = 'Polly.Joanna-Neural';
+    const normalizedPhone = normalizePhoneNumber(agentPhone);
+    const callerId = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');
+
+    logger.info({ agentPhone: normalizedPhone, callSid, callerId }, 'Serving transfer TwiML');
 
     const twiml = generateTransferTwiML({
-      agentNumber: agentPhone || '',
+      agentNumber: normalizedPhone,
       voiceId,
       statusUrl: `${dialStatusUrl}?agentId=${encodeURIComponent(agentId || '')}&callSid=${encodeURIComponent(callSid || '')}`,
       transferMessage: 'Please hold while we connect you to an agent.',
+      callerId,
     });
 
     return reply.status(200).type('text/xml').send(twiml);
