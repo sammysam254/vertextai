@@ -13,6 +13,31 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Resolve full backend API URL for client and server calls
+ */
+export function getApiEndpoint(path: string): string {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+
+  if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
+    return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
+  }
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    // When running in production on custom domain or on Render
+    if (host.includes('vertext.site') || host.includes('onrender.com')) {
+      return `https://callpulse-api.onrender.com${cleanPath}`;
+    }
+  }
+
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
+  }
+
+  return cleanPath;
+}
+
+/**
  * Format phone number to E.164 format
  */
 export function formatPhoneNumber(phone: string): string {

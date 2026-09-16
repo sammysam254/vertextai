@@ -19,7 +19,7 @@ import {
   Volume2,
   Sparkles,
 } from 'lucide-react';
-import { formatPhoneNumber, formatDuration } from '@/lib/utils';
+import { formatPhoneNumber, formatDuration, getApiEndpoint } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { useSearchParams } from 'next/navigation';
@@ -57,13 +57,6 @@ export default function DialerPage() {
   const twilioPhone = process.env.NEXT_PUBLIC_TWILIO_PHONE || '+12513571708';
   const supabase = createClient();
   const deviceRef = useRef<any>(null);
-
-  const getApiEndpoint = (path: string): string => {
-    if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
-      return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${path}`;
-    }
-    return path;
-  };
 
   useEffect(() => {
     if (contextOrgId) {
