@@ -16,8 +16,11 @@ import {
 } from '@/services/billing/paystack.service';
 import {
   createNowPaymentsInvoice,
+  createNowPaymentsUsdtPayment,
   getNowPaymentsPaymentStatus,
   verifyNowPaymentsSignature,
+  UsdtNetwork,
+  USDT_NETWORK_CONFIG,
 } from '@/services/billing/nowpayments.service';
 
 const logger = createLogger('routes:billing');
@@ -216,7 +219,74 @@ export const billingRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.status(200).send({ received: true });
   });
 
-  // POST /api/v1/billing/nowpayments/invoice - Generate Crypto invoice
+  // POST /api/v1/billing/nowpayments/usdt-deposit - Create direct USDT deposit on specified network with address & QR code
+  fastify.post<{
+    Body: {
+      organizationId: string;
+      amountUSD: number;
+      network?: UsdtNetwork;
+    };
+  }>('/nowpayments/usdt-deposit', async (request, reply) => {
+    const { organizationId, amountUSD, network = 'TRC20' } = request.body || {};
+
+    if (!organizationId || !amountUSD) {
+      return reply.status(400).send({ error: 'organizationId and amountUSD are required' });
+    }
+
+    if (amountUSD < 1) {
+      return reply.status(400).send({ error: 'Minimum USDT deposit amount is $1.00 USD' });
+    }
+
+    try {
+      const host = (request.headers['x-forwarded-host'] as string) || request.headers.host;
+      const proto = (request.headers['x-forwarded-proto'] as string) || 'https';
+      const effectiveBaseUrl =
+        host && !host.includes('localhost') && !host.includes('127.0.0.1')
+          ? `${proto}://${host}`
+          : config.baseUrl && !config.baseUrl.includes('localhost')
+          ? config.baseUrl
+          : 'https://vertext.site';
+
+      const payment = await createNowPaymentsUsdtPayment({
+        amountUSD: Number(amountUSD),
+        organizationId,
+        network: (network as UsdtNetwork) || 'TRC20',
+        ipnCallbackUrl: `${effectiveBaseUrl}/api/v1/billing/nowpayments/webhook`,
+      });
+
+      // Record pending deposit in ledger with exact address and network
+      await recordPendingDeposit({
+        organizationId,
+        amount: Number(amountUSD),
+        paymentGateway: 'nowpayments',
+        paymentReference: payment.payment_id,
+        description: `USDT Deposit ($${Number(amountUSD).toFixed(2)} USD via ${payment.networkName}) (Pending Confirmation)`,
+        metadata: {
+          paymentId: payment.payment_id,
+          orderId: payment.order_id,
+          payAddress: payment.pay_address,
+          payAmount: payment.pay_amount,
+          network: payment.network,
+          networkName: payment.networkName,
+          qrCodeUrl: payment.qrCodeUrl,
+          invoiceUrl: payment.invoice_url,
+        },
+      });
+
+      return reply.status(200).send({
+        success: true,
+        ...payment,
+      });
+    } catch (err: any) {
+      logger.error({ err, organizationId, amountUSD, network }, 'Failed to create USDT deposit');
+      return reply.status(500).send({
+        error: 'Failed to create USDT deposit',
+        message: err.message,
+      });
+    }
+  });
+
+  // POST /api/v1/billing/nowpayments/invoice - Generate Crypto invoice (legacy/fallback)
   fastify.post<{
     Body: {
       organizationId: string;
@@ -231,8 +301,8 @@ export const billingRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ error: 'organizationId and amountUSD are required' });
     }
 
-    if (amountUSD < 2) {
-      return reply.status(400).send({ error: 'Minimum crypto top-up amount is $2.00 USD' });
+    if (amountUSD < 1) {
+      return reply.status(400).send({ error: 'Minimum crypto top-up amount is $1.00 USD' });
     }
 
     try {
@@ -298,11 +368,16 @@ export const billingRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(200).send({
           confirmed: false,
           status: statusRes.status,
-          message: `Payment status is '${statusRes.status}'. Balance will be credited once confirmed on blockchain.`,
+          message:
+            statusRes.status === 'waiting'
+              ? 'Awaiting transaction on the blockchain...'
+              : statusRes.status === 'confirming'
+              ? 'Transaction detected! Confirming blocks on the blockchain...'
+              : `Payment status is '${statusRes.status}'. Balance will credit once confirmed.`,
         });
       }
 
-      // Payment confirmed on blockchain -> credit wallet
+      // Payment confirmed on blockchain -> credit wallet with exact amount
       const confirmRes = await confirmPendingDeposit({
         paymentReference: invoiceId,
         confirmedAmount: statusRes.priceAmount,
@@ -324,7 +399,8 @@ export const billingRoutes: FastifyPluginAsync = async (fastify) => {
         confirmed: true,
         status: statusRes.status,
         newBalance: confirmRes.newBalance,
-        message: 'Crypto deposit confirmed on blockchain! Wallet credited.',
+        amountCredited: statusRes.priceAmount,
+        message: 'USDT deposit confirmed on blockchain! Wallet successfully credited.',
       });
     } catch (err: any) {
       logger.error({ err, invoiceId }, 'Error verifying NOWPayments status');

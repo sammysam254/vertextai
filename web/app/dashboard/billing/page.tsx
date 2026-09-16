@@ -286,13 +286,13 @@ export default function BillingPage() {
             </div>
 
             <div className="flex justify-between p-2 bg-navy-dark rounded-lg border border-navy-dark-border">
-              <span className="text-slate-blue-300">Voice Usage:</span>
-              <span className="font-mono text-chart-cyan font-bold">Twilio rate + 20%</span>
+              <span className="text-slate-blue-300">Paystack Rate:</span>
+              <span className="font-mono text-chart-cyan font-bold">1 USD = 134 KES</span>
             </div>
 
             <div className="flex justify-between p-2 bg-navy-dark rounded-lg border border-navy-dark-border">
-              <span className="text-slate-blue-300">Free Monthly:</span>
-              <span className="text-accent-success font-semibold">First 3 mins free</span>
+              <span className="text-slate-blue-300">Crypto Deposits:</span>
+              <span className="font-mono text-accent-success font-semibold">USDT (All Networks)</span>
             </div>
           </div>
         </Panel>
@@ -376,8 +376,14 @@ export default function BillingPage() {
                       </td>
                       <td className="py-3 px-3 text-right">
                         <Badge
-                          variant={tx.status === 'completed' ? 'resolved' : 'offline'}
-                          className="text-[10px]"
+                          variant={
+                            tx.status === 'completed'
+                              ? 'resolved'
+                              : tx.status === 'pending'
+                              ? 'waiting'
+                              : 'offline'
+                          }
+                          className="text-[10px] capitalize"
                         >
                           {tx.status}
                         </Badge>

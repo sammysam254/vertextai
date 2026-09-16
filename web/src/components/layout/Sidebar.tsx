@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -19,10 +19,12 @@ import {
   ChevronDown,
   Menu,
   X,
+  Wallet,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { createClient } from '@/lib/supabase/client';
+import { useOrganization } from '@/lib/context/OrganizationContext';
 
 interface NavItemProps {
   href: string;
@@ -111,6 +113,25 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const { organizationId } = useOrganization();
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!organizationId) return;
+    const fetchBalance = async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL
+          ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')
+          : '';
+        const res = await fetch(`${apiUrl}/api/v1/billing/wallet?organizationId=${organizationId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setWalletBalance(typeof data.balance === 'number' ? data.balance : 0);
+        }
+      } catch (e) {}
+    };
+    fetchBalance();
+  }, [organizationId, pathname]);
 
   const isActive = (path: string) => {
     if (path === '/dashboard') {
@@ -164,6 +185,14 @@ export function Sidebar() {
             label="WALLBOARDS"
             badge="NEW"
             isActive={isActive('/dashboard/wallboards')}
+            onClick={() => setIsMobileOpen(false)}
+          />
+          <NavItem
+            href="/dashboard/billing"
+            icon={Wallet}
+            label="WALLET"
+            badge={walletBalance !== null ? `$${walletBalance.toFixed(2)}` : undefined}
+            isActive={isActive('/dashboard/billing')}
             onClick={() => setIsMobileOpen(false)}
           />
         </NavGroup>
