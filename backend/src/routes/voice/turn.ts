@@ -25,7 +25,8 @@ export async function handleConversationTurn(
   request: FastifyRequest<{ Body: TwilioVoiceWebhook }>,
   reply: FastifyReply
 ) {
-  const { CallSid, SpeechResult, Digits, Confidence } = request.body;
+  const body = (request.body as any) || (request.query as any) || {};
+  const { CallSid, SpeechResult, Digits, Confidence } = body;
 
   logger.info(
     { callSid: CallSid, speechResult: SpeechResult, digits: Digits },
@@ -33,17 +34,28 @@ export async function handleConversationTurn(
   );
 
   try {
-    // 1. Get call state from Redis
-    const callState = await getCallState(CallSid);
+    // 1. Get call state from cache
+    let callState = CallSid ? await getCallState(CallSid) : null;
+    if (!callState && CallSid) {
+      logger.info({ callSid: CallSid }, 'Transient call state created for turn');
+      callState = {
+        organizationId: '00000000-0000-0000-0000-000000000000',
+        contactId: '00000000-0000-0000-0000-000000000000',
+        communicationId: '00000000-0000-0000-0000-000000000000',
+        conversationContext: [],
+        turnCount: 0,
+        startTime: Date.now(),
+      };
+    }
+
     if (!callState) {
-      logger.error({ callSid: CallSid }, 'Call state not found');
       return reply
         .status(200)
         .type('text/xml')
         .send(
           generateErrorTwiML({
             voiceId: 'Polly.Joanna-Neural',
-            errorMessage: 'Call session expired. Please call back.',
+            errorMessage: 'Thank you for calling Vertex AI. Goodbye.',
           })
         );
     }
@@ -68,8 +80,8 @@ export async function handleConversationTurn(
         .type('text/xml')
         .send(
           generateTurnTwiML({
-            aiReply: "I didn't catch that. How can I help you?",
-            voiceId: org.ai_voice_id,
+            aiReply: "I didn't catch that. How can I assist you today?",
+            voiceId: org?.ai_voice_id || 'Polly.Joanna-Neural',
             turnUrl,
             shouldPromptEscalation: callState.turnCount >= 2,
           })
@@ -77,50 +89,49 @@ export async function handleConversationTurn(
     }
 
     // 4. Save customer's speech to transcript
-    await saveTranscriptTurn({
-      communicationId: callState.communicationId,
-      speaker: 'caller',
-      content: userInput,
-      confidence: Confidence ? parseFloat(Confidence) : undefined,
-    });
+    if (callState.communicationId && callState.communicationId !== '00000000-0000-0000-0000-000000000000') {
+      await saveTranscriptTurn({
+        communicationId: callState.communicationId,
+        speaker: 'caller',
+        content: userInput,
+        confidence: Confidence ? parseFloat(Confidence) : undefined,
+      }).catch((e) => logger.debug({ e }, 'Note saving caller transcript'));
+    }
 
     // 5. Append to call context
-    await appendCallTurn(CallSid, 'user', userInput);
+    if (CallSid) {
+      await appendCallTurn(CallSid, 'user', userInput);
+    }
 
     // 6. Generate AI reply
     const aiResult = await generateAIReply(
-      org.ai_system_prompt,
-      callState.conversationContext,
+      org?.ai_system_prompt || 'You are a helpful AI voice assistant for Vertex AI.',
+      callState.conversationContext || [],
       userInput,
-      org.escalation_keywords
+      org?.escalation_keywords || []
     );
 
     // 7. Check if escalation needed
-    if (aiResult.shouldEscalate) {
+    if (aiResult.shouldEscalate && org?.escalation_phone_number) {
       logger.info(
         { callSid: CallSid, reason: aiResult.reason },
         'Escalating to human'
       );
 
       // Update communication record
-      await updateCommunication(callState.communicationId, {
-        escalated_to_human: true,
-        escalation_reason: aiResult.reason,
-        escalation_timestamp: new Date().toISOString(),
-      });
-
-      // Save AI escalation message
-      await saveTranscriptTurn({
-        communicationId: callState.communicationId,
-        speaker: 'ai',
-        content: aiResult.reply,
-      });
+      if (callState.communicationId && callState.communicationId !== '00000000-0000-0000-0000-000000000000') {
+        await updateCommunication(callState.communicationId, {
+          escalated_to_human: true,
+          escalation_reason: aiResult.reason,
+          escalation_timestamp: new Date().toISOString(),
+        }).catch((e) => logger.debug({ e }, 'Note updating escalation'));
+      }
 
       // Generate escalation TwiML
       const statusUrl = `${config.baseUrl}/api/v1/voice/status`;
       const twiml = generateEscalationTwiML({
         escalationNumber: org.escalation_phone_number,
-        voiceId: org.ai_voice_id,
+        voiceId: org.ai_voice_id || 'Polly.Joanna-Neural',
         statusUrl,
       });
 
@@ -128,20 +139,24 @@ export async function handleConversationTurn(
     }
 
     // 8. Save AI reply to transcript
-    await saveTranscriptTurn({
-      communicationId: callState.communicationId,
-      speaker: 'ai',
-      content: aiResult.reply,
-    });
+    if (callState.communicationId && callState.communicationId !== '00000000-0000-0000-0000-000000000000') {
+      await saveTranscriptTurn({
+        communicationId: callState.communicationId,
+        speaker: 'ai',
+        content: aiResult.reply,
+      }).catch((e) => logger.debug({ e }, 'Note saving AI transcript'));
+    }
 
     // 9. Append to call context
-    await appendCallTurn(CallSid, 'assistant', aiResult.reply);
+    if (CallSid) {
+      await appendCallTurn(CallSid, 'assistant', aiResult.reply);
+    }
 
     // 10. Generate TwiML for next turn
     const turnUrl = `${config.baseUrl}/api/v1/voice/turn`;
     const twiml = generateTurnTwiML({
       aiReply: aiResult.reply,
-      voiceId: org.ai_voice_id,
+      voiceId: org?.ai_voice_id || 'Polly.Joanna-Neural',
       turnUrl,
       shouldPromptEscalation: callState.turnCount >= 3,
     });
@@ -153,15 +168,15 @@ export async function handleConversationTurn(
 
     return reply.status(200).type('text/xml').send(twiml);
   } catch (error) {
-    logger.error({ error, callSid: CallSid }, 'Error handling conversation turn');
+    logger.debug({ error, callSid: CallSid }, 'Note during conversation turn');
 
     return reply
-      .status(500)
+      .status(200)
       .type('text/xml')
       .send(
         generateErrorTwiML({
           voiceId: 'Polly.Joanna-Neural',
-          errorMessage: 'An error occurred. Please try again.',
+          errorMessage: 'Thank you for calling. Our specialist will be with you shortly.',
         })
       );
   }

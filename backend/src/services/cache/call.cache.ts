@@ -142,3 +142,30 @@ export async function isCallActive(callSid: string): Promise<boolean> {
   const state = await getCallState(callSid);
   return state !== null;
 }
+
+/**
+ * Record latest call status string (for real-time frontend status polling)
+ */
+export async function setCallLatestStatus(callSid: string, status: string): Promise<void> {
+  const key = `call:latest_status:${callSid}`;
+  try {
+    await setCached(key, { status, updatedAt: Date.now() }, 3600);
+    logger.debug({ callSid, status }, 'Call latest status updated in cache');
+  } catch (err) {
+    logger.debug({ err, callSid }, 'Note saving latest call status to cache');
+  }
+}
+
+/**
+ * Retrieve latest call status string from cache
+ */
+export async function getCallLatestStatus(callSid: string): Promise<string | null> {
+  const key = `call:latest_status:${callSid}`;
+  try {
+    const data = await getCached<{ status: string; updatedAt: number }>(key);
+    return data?.status || null;
+  } catch (err) {
+    return null;
+  }
+}
+

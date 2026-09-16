@@ -40,6 +40,8 @@ function mapDialStatus(
   }
 }
 
+import { setCallLatestStatus } from '@/services/cache';
+
 export async function handleDialStatus(
   request: FastifyRequest<{
     Body: DialStatusBody;
@@ -47,8 +49,10 @@ export async function handleDialStatus(
   }>,
   reply: FastifyReply
 ) {
-  const { DialCallStatus, DialCallDuration, CallSid } = request.body;
-  const { agentId, callSid: qsCallSid } = request.query;
+  const body = (request.body as any) || {};
+  const query = (request.query as any) || {};
+  const { DialCallStatus, DialCallDuration, CallSid } = body;
+  const { agentId, callSid: qsCallSid } = query;
 
   const resolvedCallSid = qsCallSid || CallSid;
   const dialStatus = DialCallStatus || 'failed';
@@ -58,26 +62,32 @@ export async function handleDialStatus(
     'Dial status callback received'
   );
 
+  if (resolvedCallSid) {
+    await setCallLatestStatus(resolvedCallSid, dialStatus);
+  }
+
   // ── 1. Update communication transfer_status ──────────────────────────
   try {
-    const comm = await getCommunicationByTwilioSid(resolvedCallSid);
-    if (comm) {
-      const transferStatus = mapDialStatus(dialStatus);
+    if (resolvedCallSid) {
+      const comm = await getCommunicationByTwilioSid(resolvedCallSid);
+      if (comm) {
+        const transferStatus = mapDialStatus(dialStatus);
 
-      await updateCommunication(comm.id, {
-        transfer_status: transferStatus,
-        duration_seconds: DialCallDuration
-          ? parseInt(DialCallDuration, 10) + (comm.duration_seconds || 0)
-          : comm.duration_seconds,
-      } as any);
+        await updateCommunication(comm.id, {
+          transfer_status: transferStatus,
+          duration_seconds: DialCallDuration
+            ? parseInt(DialCallDuration, 10) + (comm.duration_seconds || 0)
+            : comm.duration_seconds,
+        } as any);
 
-      logger.info(
-        { communicationId: comm.id, transferStatus },
-        'Communication transfer status updated'
-      );
+        logger.info(
+          { communicationId: comm.id, transferStatus },
+          'Communication transfer status updated'
+        );
+      }
     }
   } catch (err) {
-    logger.error({ err, callSid: resolvedCallSid }, 'Failed to update communication');
+    logger.debug({ err, callSid: resolvedCallSid }, 'Note updating communication for dial status');
   }
 
   // ── 2. Update agent status ────────────────────────────────────────────
@@ -87,7 +97,7 @@ export async function handleDialStatus(
       await updateAgentStatus(agentId, 'available');
       logger.info({ agentId }, 'Agent status reset to available');
     } catch (err) {
-      logger.warn({ err, agentId }, 'Failed to update agent status');
+      logger.debug({ err, agentId }, 'Note updating agent status');
     }
   }
 

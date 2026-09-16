@@ -3,12 +3,12 @@
 // ==============================================
 
 import type { FastifyPluginAsync } from 'fastify';
-import { initiateOutboundCall } from '@/services/twilio/client.service';
+import { initiateOutboundCall, hangupCall, getCallDetails } from '@/services/twilio/client.service';
 import { config } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { normalizePhoneNumber } from '@/lib/phone';
-import { initializeCallState } from '@/services/cache';
-import { findOrCreateContact, createCommunication, getOrganizationById } from '@/services/database';
+import { initializeCallState, clearCallState, setCallLatestStatus, getCallLatestStatus } from '@/services/cache';
+import { findOrCreateContact, createCommunication, getCommunicationByTwilioSid, updateCommunication } from '@/services/database';
 
 const logger = createLogger('routes:voice:outbound');
 
@@ -80,23 +80,23 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
           statusCallback: `${config.baseUrl}/api/v1/voice/status`,
         });
 
-        // Initialize communication and call state if org context is provided
-        if (organizationId) {
-          try {
-            const contact = await findOrCreateContact(organizationId, toNumber);
-            const comm = await createCommunication({
-              organizationId,
-              contactId: contact.id,
-              type: 'voice_out',
-              twilioSid: result.callSid,
-              fromNumber,
-              toNumber,
-              status: result.status || 'in-progress',
-            });
-            await initializeCallState(result.callSid, organizationId, contact.id, comm.id);
-          } catch (err) {
-            logger.warn({ err }, 'Could not initialize DB record for outbound call');
-          }
+        // Initialize communication and call state for every call
+        const targetOrgId = organizationId || '00000000-0000-0000-0000-000000000000';
+        try {
+          const contact = await findOrCreateContact(targetOrgId, toNumber);
+          const comm = await createCommunication({
+            organizationId: targetOrgId,
+            contactId: contact.id,
+            type: 'voice_out',
+            twilioSid: result.callSid,
+            fromNumber,
+            toNumber,
+            status: result.status || 'in-progress',
+          });
+          await initializeCallState(result.callSid, targetOrgId, contact.id, comm.id);
+          await setCallLatestStatus(result.callSid, result.status || 'in-progress');
+        } catch (err) {
+          logger.debug({ err }, 'Note initializing DB record for outbound call');
         }
 
         return reply.status(200).send({
@@ -123,6 +123,93 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
     },
+  });
+
+  // POST /api/v1/voice/hangup - Terminate active call immediately (from dialer or dashboard)
+  fastify.post<{
+    Body: { callSid?: string; CallSid?: string };
+  }>('/hangup', async (request, reply) => {
+    const body = (request.body as any) || (request.query as any) || {};
+    const callSid = body.callSid || body.CallSid;
+
+    if (!callSid) {
+      return reply.status(400).send({
+        error: 'Bad Request',
+        message: 'callSid is required to terminate call',
+        statusCode: 400,
+      });
+    }
+
+    logger.info({ callSid }, 'Received immediate call hangup command');
+
+    // 1. Terminate call leg on Twilio (disconnects phone carrier instantly)
+    await hangupCall({ callSid });
+
+    // 2. Set terminal state in cache & clear active context
+    await setCallLatestStatus(callSid, 'completed');
+    await clearCallState(callSid);
+
+    // 3. Update communication record if found
+    try {
+      const comm = await getCommunicationByTwilioSid(callSid);
+      if (comm) {
+        await updateCommunication(comm.id, {
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+        });
+      }
+    } catch (err) {
+      logger.debug({ err, callSid }, 'Note updating communication on hangup');
+    }
+
+    return reply.status(200).send({
+      success: true,
+      callSid,
+      status: 'completed',
+      message: 'Call ended immediately',
+    });
+  });
+
+  // GET /api/v1/voice/call-status - Real-time call status poller for frontend
+  fastify.get<{
+    Querystring: { callSid: string };
+  }>('/call-status', async (request, reply) => {
+    const query = (request.query as any) || {};
+    const callSid = query.callSid;
+
+    if (!callSid) {
+      return reply.status(400).send({ error: 'callSid is required' });
+    }
+
+    // 1. Check cached status
+    const cachedStatus = await getCallLatestStatus(callSid);
+    if (cachedStatus) {
+      const isActive = ['queued', 'ringing', 'in-progress'].includes(cachedStatus);
+      return reply.status(200).send({
+        callSid,
+        status: cachedStatus,
+        active: isActive,
+      });
+    }
+
+    // 2. Check Twilio live status
+    try {
+      const details = await getCallDetails({ callSid });
+      const isActive = ['queued', 'ringing', 'in-progress'].includes(details.status);
+      await setCallLatestStatus(callSid, details.status);
+      return reply.status(200).send({
+        callSid,
+        status: details.status,
+        active: isActive,
+        duration: details.duration,
+      });
+    } catch {
+      return reply.status(200).send({
+        callSid,
+        status: 'completed',
+        active: false,
+      });
+    }
   });
 
   // TwiML for outbound call when recipient answers

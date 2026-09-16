@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Panel } from '@/components/ui/Panel';
 import { Button } from '@/components/ui/Button';
 import { Phone, Delete, X, PhoneCall, PhoneOff, UserCheck, ArrowRightLeft, Building, User } from 'lucide-react';
@@ -23,6 +23,43 @@ export default function DialerPage() {
   const [transferMessage, setTransferMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const twilioPhone = process.env.NEXT_PUBLIC_TWILIO_PHONE || '+12513571708';
+
+  const getApiEndpoint = (path: string): string => {
+    if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
+      return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${path}`;
+    }
+    return path;
+  };
+
+  // Real-time synchronization: detect when remote party on phone hangs up
+  useEffect(() => {
+    if (!isCallActive || !activeCallSid) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const endpoint = getApiEndpoint(`/api/v1/voice/call-status?callSid=${encodeURIComponent(activeCallSid)}`);
+        const res = await fetch(endpoint);
+        if (res.ok) {
+          const data = await res.json();
+          // Check if call leg was terminated on the carrier network
+          const terminalStatuses = ['completed', 'canceled', 'busy', 'no-answer', 'failed'];
+          if (data.active === false || terminalStatuses.includes(data.status?.toLowerCase())) {
+            setIsCallActive(false);
+            setActiveCallSid('');
+            setCallStatus(`Call ended (${data.status || 'remote hung up'})`);
+            setTimeout(() => {
+              setCallStatus('');
+              setPhoneNumber('');
+            }, 3000);
+          }
+        }
+      } catch {
+        // Silently continue polling
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [isCallActive, activeCallSid]);
 
   const handleDigit = (digit: string) => {
     setPhoneNumber((prev) => prev + digit);
@@ -47,10 +84,7 @@ export default function DialerPage() {
 
     try {
       const formattedNumber = formatPhoneNumber(phoneNumber);
-      let endpoint = '/api/v1/voice/outbound';
-      if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
-        endpoint = `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}/api/v1/voice/outbound`;
-      }
+      const endpoint = getApiEndpoint('/api/v1/voice/outbound');
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -79,12 +113,34 @@ export default function DialerPage() {
     }
   };
 
-  const handleHangup = () => {
+  // Instant Hangup: Drops the Twilio and carrier line immediately
+  const handleHangup = async () => {
+    const sidToHangup = activeCallSid;
+
+    // Immediately update UI for zero perceived latency
     setIsCallActive(false);
-    setCallStatus('');
+    setCallStatus('Ending call...');
     setActiveCallSid('');
-    setPhoneNumber('');
     setTransferMessage(null);
+
+    if (sidToHangup) {
+      try {
+        const endpoint = getApiEndpoint('/api/v1/voice/hangup');
+        await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callSid: sidToHangup }),
+        });
+      } catch (err) {
+        console.error('Failed to trigger hangup endpoint:', err);
+      }
+    }
+
+    setCallStatus('Call ended');
+    setTimeout(() => {
+      setCallStatus('');
+      setPhoneNumber('');
+    }, 2500);
   };
 
   const handleTransfer = async () => {
@@ -95,10 +151,7 @@ export default function DialerPage() {
 
     try {
       const formattedTransferNumber = formatPhoneNumber(transferPhone);
-      let endpoint = '/api/v1/voice/transfer';
-      if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
-        endpoint = `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}/api/v1/voice/transfer`;
-      }
+      const endpoint = getApiEndpoint('/api/v1/voice/transfer');
 
       const res = await fetch(endpoint, {
         method: 'POST',

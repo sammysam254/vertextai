@@ -21,6 +21,8 @@ export {
   clearCallState,
   getCallDuration,
   isCallActive,
+  setCallLatestStatus,
+  getCallLatestStatus,
 } from './call.cache';
 
 // SMS context caching

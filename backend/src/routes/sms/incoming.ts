@@ -20,10 +20,11 @@ export async function handleIncomingSMS(
   request: FastifyRequest<{ Body: TwilioSMSWebhook }>,
   reply: FastifyReply
 ) {
-  const { MessageSid, From, To, Body, NumMedia, MediaUrl0, MediaContentType0 } = request.body;
+  const body = (request.body as any) || (request.query as any) || {};
+  const { MessageSid, From, To, Body = '', NumMedia, MediaUrl0, MediaContentType0 } = body;
 
   logger.info(
-    { messageSid: MessageSid, from: From, to: To, bodyLength: Body.length },
+    { messageSid: MessageSid, from: From, to: To, bodyLength: (Body || '').length },
     'Inbound SMS received'
   );
 

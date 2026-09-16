@@ -12,17 +12,15 @@ const nextConfig = {
   experimental: {
     typedRoutes: true,
   },
-  // Proxy API requests to backend in production
+  // Proxy API requests to backend in both local dev and production
   async rewrites() {
-    if (process.env.NODE_ENV === 'production') {
-      return [
-        {
-          source: '/api/:path*',
-          destination: 'http://localhost:5050/api/:path*',
-        },
-      ];
-    }
-    return [];
+    const backendHost = process.env.BACKEND_INTERNAL_URL || process.env.BACKEND_HOST || 'http://localhost:5050';
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${backendHost}/api/:path*`,
+      },
+    ];
   },
 };
 

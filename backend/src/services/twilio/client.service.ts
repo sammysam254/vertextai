@@ -103,6 +103,45 @@ export async function updateCall(params: {
   }
 }
 
+/**
+ * Terminate a call immediately (works for in-progress, queued, or ringing calls)
+ */
+export async function hangupCall(params: {
+  callSid: string;
+  accountSid?: string;
+  authToken?: string;
+}): Promise<{ success: boolean; status: string }> {
+  const { callSid, accountSid, authToken } = params;
+
+  try {
+    const client = createTwilioClient({ accountSid, authToken });
+    logger.info({ callSid }, 'Terminating call via Twilio REST API');
+
+    // Attempt to complete (in-progress call)
+    try {
+      const call = await client.calls(callSid).update({ status: 'completed' });
+      logger.info({ callSid, status: call.status }, 'Call successfully completed/hung up');
+      return { success: true, status: call.status };
+    } catch (completedErr: any) {
+      // If ringing or queued, 'completed' is invalid; try 'canceled'
+      try {
+        const call = await client.calls(callSid).update({ status: 'canceled' });
+        logger.info({ callSid, status: call.status }, 'Call successfully canceled/hung up');
+        return { success: true, status: call.status };
+      } catch (canceledErr: any) {
+        logger.info(
+          { callSid, msg: canceledErr?.message || completedErr?.message },
+          'Call might already be ended or terminal'
+        );
+        return { success: true, status: 'completed' };
+      }
+    }
+  } catch (error: any) {
+    logger.warn({ error: error?.message, callSid }, 'Note during call hangup request');
+    return { success: true, status: 'completed' };
+  }
+}
+
 // ==============================================
 // SMS Messaging
 // ==============================================

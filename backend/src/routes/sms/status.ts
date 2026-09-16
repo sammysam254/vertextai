@@ -23,7 +23,12 @@ export async function handleSMSStatus(
   request: FastifyRequest<{ Body: SMSStatusCallback }>,
   reply: FastifyReply
 ) {
-  const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = request.body;
+  const body = (request.body as any) || (request.query as any) || {};
+  const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = body;
+
+  if (!MessageSid) {
+    return reply.status(200).send({ received: true });
+  }
 
   logger.info({ messageSid: MessageSid, status: MessageStatus }, 'SMS status callback received');
 
@@ -31,7 +36,7 @@ export async function handleSMSStatus(
     // Get communication record
     const communication = await getCommunicationByTwilioSid(MessageSid);
     if (!communication) {
-      logger.warn({ messageSid: MessageSid }, 'Communication not found for SMS status');
+      logger.debug({ messageSid: MessageSid }, 'No communication record found for SMS status');
       return reply.status(200).send({ received: true });
     }
 
