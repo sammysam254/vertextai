@@ -12,14 +12,9 @@ const nextConfig = {
   experimental: {
     typedRoutes: true,
   },
-  // Proxy API requests to backend in both local dev and production
+  // Proxy API requests to backend on port 5050 inside the container
   async rewrites() {
-    const backendHost =
-      process.env.BACKEND_INTERNAL_URL ||
-      process.env.BACKEND_HOST ||
-      (process.env.NODE_ENV === 'production'
-        ? 'https://callpulse-api.onrender.com'
-        : 'http://localhost:5050');
+    const backendHost = process.env.BACKEND_INTERNAL_URL || process.env.BACKEND_HOST || 'http://localhost:5050';
     return [
       {
         source: '/api/:path*',

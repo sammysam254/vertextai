@@ -18,19 +18,12 @@ export function cn(...inputs: ClassValue[]) {
 export function getApiEndpoint(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
 
-  if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
-    return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
-  }
-
+  // In the browser, using a relative path (/api/...) goes through Next.js rewrite proxy to backend port 5050
   if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    // When running in production on custom domain or on Render
-    if (host.includes('vertext.site') || host.includes('onrender.com')) {
-      return `https://callpulse-api.onrender.com${cleanPath}`;
-    }
+    return cleanPath;
   }
 
-  if (process.env.NEXT_PUBLIC_API_URL) {
+  if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost') && !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api')) {
     return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
   }
 
