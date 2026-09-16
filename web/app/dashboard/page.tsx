@@ -54,70 +54,70 @@ export default async function DashboardOverviewPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white mb-1">Call Center Dashboard</h1>
-          <p className="text-slate-blue-400">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1">Call Center Dashboard</h1>
+          <p className="text-xs sm:text-sm text-slate-blue-400">
             Real-time activity and intelligence for Vertex AI
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <Link
             href="/dashboard/dialer"
-            className="btn btn-primary inline-flex items-center gap-2 px-4 py-2 bg-accent-primary hover:bg-accent-primary/90 text-white font-medium rounded-lg shadow-sm"
+            className="btn btn-primary inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-accent-primary hover:bg-accent-primary/90 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm"
           >
-            <PhoneCall className="h-4 w-4" />
+            <PhoneCall className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             Open Dialer
           </Link>
           <Link
             href="/dashboard/inbox"
-            className="btn btn-secondary inline-flex items-center gap-2 px-4 py-2 bg-navy-dark-elevated hover:bg-navy-dark text-slate-blue-200 border border-slate-blue-800 rounded-lg"
+            className="btn btn-secondary inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-navy-dark-elevated hover:bg-navy-dark text-slate-blue-200 border border-slate-blue-800 rounded-lg text-xs sm:text-sm"
           >
-            <MessageSquare className="h-4 w-4" />
+            <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             Send SMS
           </Link>
         </div>
       </div>
 
       {/* Real Quick Stats */}
-      <div className="grid md:grid-cols-4 gap-4">
-        <Panel className="p-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <Panel className="p-4 sm:p-6">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-slate-blue-400 text-sm font-medium">Total Calls</p>
-            <Phone className="h-5 w-5 text-accent-primary" />
+            <p className="text-slate-blue-400 text-xs sm:text-sm font-medium">Total Calls</p>
+            <Phone className="h-4 w-4 sm:h-5 sm:w-5 text-accent-primary" />
           </div>
-          <p className="text-3xl font-bold text-white">{totalCalls}</p>
-          <p className="text-xs text-slate-blue-400 mt-2">Inbound & Outbound</p>
+          <p className="text-2xl sm:text-3xl font-bold text-white">{totalCalls}</p>
+          <p className="text-[11px] sm:text-xs text-slate-blue-400 mt-1 sm:mt-2">Inbound & Outbound</p>
         </Panel>
-        <Panel className="p-6">
+        <Panel className="p-4 sm:p-6">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-slate-blue-400 text-sm font-medium">Active Agents</p>
-            <UserCheck className="h-5 w-5 text-accent-success" />
+            <p className="text-slate-blue-400 text-xs sm:text-sm font-medium">Active Agents</p>
+            <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-accent-success" />
           </div>
-          <p className="text-3xl font-bold text-white">{activeAgents}</p>
-          <p className="text-xs text-slate-blue-400 mt-2">Ready to receive transfers</p>
+          <p className="text-2xl sm:text-3xl font-bold text-white">{activeAgents}</p>
+          <p className="text-[11px] sm:text-xs text-slate-blue-400 mt-1 sm:mt-2">Ready for transfers</p>
         </Panel>
-        <Panel className="p-6">
+        <Panel className="p-4 sm:p-6">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-slate-blue-400 text-sm font-medium">Contacts</p>
-            <Users className="h-5 w-5 text-accent-cyan" />
+            <p className="text-slate-blue-400 text-xs sm:text-sm font-medium">Contacts</p>
+            <Users className="h-4 w-4 sm:h-5 sm:w-5 text-accent-cyan" />
           </div>
-          <p className="text-3xl font-bold text-white">{totalContacts}</p>
-          <p className="text-xs text-slate-blue-400 mt-2">Customers & Leads</p>
+          <p className="text-2xl sm:text-3xl font-bold text-white">{totalContacts}</p>
+          <p className="text-[11px] sm:text-xs text-slate-blue-400 mt-1 sm:mt-2">Customers & Leads</p>
         </Panel>
-        <Panel className="p-6">
+        <Panel className="p-4 sm:p-6">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-slate-blue-400 text-sm font-medium">Messages</p>
-            <MessageSquare className="h-5 w-5 text-accent-purple" />
+            <p className="text-slate-blue-400 text-xs sm:text-sm font-medium">Messages</p>
+            <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 text-accent-purple" />
           </div>
-          <p className="text-3xl font-bold text-white">{totalMessages}</p>
-          <p className="text-xs text-slate-blue-400 mt-2">Inbound & Outbound SMS</p>
+          <p className="text-2xl sm:text-3xl font-bold text-white">{totalMessages}</p>
+          <p className="text-[11px] sm:text-xs text-slate-blue-400 mt-1 sm:mt-2">Inbound & Outbound SMS</p>
         </Panel>
       </div>
 
       {/* System Status & Live Actions */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <Panel className="p-6 lg:col-span-2">
+      <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
+        <Panel className="p-4 sm:p-6 lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-white">Recent Call Activity</h2>
             <Link href="/dashboard/calls" className="text-xs text-accent-primary hover:underline inline-flex items-center gap-1">

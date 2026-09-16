@@ -123,19 +123,20 @@
   
   /* Table styles */
   .table-container {
-    @apply overflow-x-auto rounded-lg border border-navy-dark-border;
+    @apply overflow-x-auto w-full max-w-full rounded-lg border border-navy-dark-border;
+    -webkit-overflow-scrolling: touch;
   }
   
   .table {
-    @apply w-full text-sm text-left;
+    @apply min-w-full text-xs sm:text-sm text-left;
   }
   
   .table thead {
-    @apply bg-navy-dark-elevated text-slate-blue-300 uppercase text-xs tracking-wider;
+    @apply bg-navy-dark-elevated text-slate-blue-300 uppercase text-[10px] sm:text-xs tracking-wider;
   }
   
   .table th {
-    @apply px-6 py-3 font-medium;
+    @apply px-3 py-2.5 sm:px-6 sm:py-3 font-medium whitespace-nowrap;
   }
   
   .table tbody tr {
@@ -143,12 +144,12 @@
   }
   
   .table td {
-    @apply px-6 py-4;
+    @apply px-3 py-2.5 sm:px-6 sm:py-4 whitespace-nowrap;
   }
   
   /* Metric card styles */
   .metric-card {
-    @apply panel p-6;
+    @apply panel p-4 sm:p-6;
   }
   
   .metric-value {

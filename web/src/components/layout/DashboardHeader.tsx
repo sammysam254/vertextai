@@ -71,60 +71,72 @@ export function DashboardHeader() {
 
   return (
     <header className="sticky top-0 z-30 bg-navy-dark/95 backdrop-blur-sm border-b border-navy-dark-border">
-      <div className="flex items-center justify-between px-6 py-4">
-        {/* Search */}
-        <div className="flex-1 max-w-xl">
+      <div className="flex items-center justify-between pl-14 pr-3 sm:px-6 py-2.5 sm:py-4 min-h-[58px]">
+        {/* Search - Visible on tablet and desktop */}
+        <div className="hidden md:block flex-1 max-w-xs lg:max-w-md mr-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-blue-500" />
             <input
               type="search"
               placeholder="Search calls, contacts, or messages..."
-              className="w-full pl-10 pr-4 py-2 bg-navy-dark-elevated border border-navy-dark-border rounded-md text-sm text-slate-blue-100 placeholder:text-slate-blue-500 focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+              className="w-full pl-9 pr-4 py-1.5 bg-navy-dark-elevated border border-navy-dark-border rounded-md text-xs sm:text-sm text-slate-blue-100 placeholder:text-slate-blue-500 focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-transparent"
             />
           </div>
         </div>
 
+        {/* Brand / Title shown only on mobile when sidebar is closed */}
+        <div className="md:hidden flex items-center gap-1.5">
+          <span className="text-sm font-bold text-white tracking-wide">CallPulse</span>
+        </div>
+
         {/* Right Section */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-1.5 sm:gap-3 ml-auto">
           {/* Active Call Live Indicator */}
           {activeCallCount > 0 && (
             <Link
               href="/dashboard/calls"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent-success/20 border border-accent-success/40 text-accent-success text-xs font-semibold animate-pulse"
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-accent-success/20 border border-accent-success/40 text-accent-success text-[11px] sm:text-xs font-semibold animate-pulse shrink-0"
+              title={`${activeCallCount} active call in progress`}
             >
-              <PhoneIncoming className="h-3.5 w-3.5" />
-              <span>{activeCallCount} Active Call{activeCallCount > 1 ? 's' : ''}</span>
+              <PhoneIncoming className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
+              <span className="hidden xs:inline">Active:</span>
+              <span>{activeCallCount}</span>
             </Link>
           )}
 
           {/* 6-Digit Merchant Code Badge */}
           <div
             onClick={copyMerchantCode}
-            title="Callers to +1 (251) 357-1708 can dial this 6-digit merchant code to reach your dashboard"
-            className="flex items-center gap-2 px-3 py-1.5 bg-navy-dark-elevated hover:bg-navy-dark-elevated/80 border border-chart-cyan/30 hover:border-chart-cyan rounded-lg cursor-pointer transition-colors text-xs"
+            title="Callers to +1 (251) 357-1708 dial this 6-digit merchant code to reach you. Click to copy."
+            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-navy-dark-elevated hover:bg-navy-dark-elevated/80 border border-chart-cyan/30 hover:border-chart-cyan rounded-lg cursor-pointer transition-colors text-xs shrink-0"
           >
-            <Hash className="h-3.5 w-3.5 text-chart-cyan" />
-            <span className="text-slate-blue-300 font-medium">Merchant ID:</span>
-            <span className="font-mono font-bold text-white tracking-widest">{merchantCode}</span>
+            <Hash className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-chart-cyan shrink-0" />
+            <span className="text-slate-blue-300 font-medium hidden sm:inline text-xs">Merchant:</span>
+            <span className="font-mono font-bold text-white tracking-wider text-[11px] sm:text-xs">{merchantCode}</span>
             {copied ? (
-              <Check className="h-3 w-3 text-accent-success ml-1" />
+              <Check className="h-3 w-3 text-accent-success ml-0.5" />
             ) : (
-              <Copy className="h-3 w-3 text-slate-blue-400 hover:text-white ml-1" />
+              <Copy className="h-3 w-3 text-slate-blue-400 hover:text-white ml-0.5 hidden xs:inline" />
             )}
           </div>
 
           {/* Notifications */}
-          <button className="relative p-2 rounded-md text-slate-blue-300 hover:text-white hover:bg-navy-dark-elevated transition-colors">
-            <Bell className="h-5 w-5" />
+          <button className="relative p-1.5 sm:p-2 rounded-md text-slate-blue-300 hover:text-white hover:bg-navy-dark-elevated transition-colors shrink-0">
+            <Bell className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
 
           {/* User Profile */}
-          <div className="flex items-center gap-3 pl-4 border-l border-navy-dark-border">
-            <div className="text-right">
-              <p className="text-sm font-medium text-white">{userName || '...'}</p>
-              <p className="text-xs text-slate-blue-400 truncate max-w-[140px]">{userEmail}</p>
+          <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-navy-dark-border shrink-0">
+            <div className="text-right hidden xs:block">
+              <p className="text-xs sm:text-sm font-medium text-white max-w-[80px] sm:max-w-[130px] truncate">
+                {userName || 'User'}
+              </p>
+              <p className="text-[10px] sm:text-xs text-slate-blue-400 truncate max-w-[130px] hidden sm:block">
+                {userEmail}
+              </p>
             </div>
-            <Avatar size="md" fallback={initials} />
+            <Avatar size="sm" fallback={initials} className="sm:hidden" />
+            <Avatar size="md" fallback={initials} className="hidden sm:inline-flex" />
           </div>
         </div>
       </div>

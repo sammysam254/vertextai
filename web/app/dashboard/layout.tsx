@@ -29,7 +29,7 @@ export default async function DashboardLayout({
         <DashboardHeader />
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6">
           {children}
         </main>
       </div>

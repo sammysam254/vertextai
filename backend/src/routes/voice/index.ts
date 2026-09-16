@@ -10,8 +10,12 @@ import { handleCallStatus } from './status';
 import { handleDialStatus } from './dial-status';
 import { outboundCallRoutes } from './outbound';
 import { transferRoutes } from './transfer';
+import { browserVoiceRoutes } from './browser';
 
 export async function voiceRoutes(app: FastifyInstance) {
+  // WebRTC Browser calling routes (Token generation and direct call bridging)
+  app.register(browserVoiceRoutes);
+
   // Transfer routes (no Twilio signature — called from frontend + Twilio TwiML fetch)
   app.register(transferRoutes);
 

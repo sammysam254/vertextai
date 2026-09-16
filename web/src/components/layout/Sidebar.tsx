@@ -30,12 +30,14 @@ interface NavItemProps {
   label: string;
   badge?: string;
   isActive?: boolean;
+  onClick?: () => void;
 }
 
-function NavItem({ href, icon: Icon, label, badge, isActive }: NavItemProps) {
+function NavItem({ href, icon: Icon, label, badge, isActive, onClick }: NavItemProps) {
   return (
     <Link
       href={href as any}
+      onClick={onClick}
       className={cn(
         'nav-item',
         isActive && 'nav-item-active'
@@ -137,12 +139,14 @@ export function Sidebar() {
             icon={Home}
             label="HOME"
             isActive={isActive('/dashboard')}
+            onClick={() => setIsMobileOpen(false)}
           />
           <NavItem
             href="/dashboard/workspace"
             icon={Briefcase}
             label="MY WORKSPACE"
             isActive={isActive('/dashboard/workspace')}
+            onClick={() => setIsMobileOpen(false)}
           />
           <NavItem
             href="/dashboard/wallboards"
@@ -150,6 +154,7 @@ export function Sidebar() {
             label="WALLBOARDS"
             badge="NEW"
             isActive={isActive('/dashboard/wallboards')}
+            onClick={() => setIsMobileOpen(false)}
           />
         </NavGroup>
 
@@ -161,30 +166,35 @@ export function Sidebar() {
             icon={Phone}
             label="CALLS"
             isActive={isActive('/dashboard/calls')}
+            onClick={() => setIsMobileOpen(false)}
           />
           <NavItem
             href="/dashboard/inbox"
             icon={MessageSquare}
             label="INBOX"
             isActive={isActive('/dashboard/inbox')}
+            onClick={() => setIsMobileOpen(false)}
           />
           <NavItem
             href="/dashboard/contacts"
             icon={Users}
             label="CONTACTS"
             isActive={isActive('/dashboard/contacts')}
+            onClick={() => setIsMobileOpen(false)}
           />
           <NavItem
             href="/dashboard/dialer"
             icon={Smartphone}
             label="DIALER"
             isActive={isActive('/dashboard/dialer')}
+            onClick={() => setIsMobileOpen(false)}
           />
           <NavItem
             href="/dashboard/agents"
             icon={UserCheck}
             label="AGENTS"
             isActive={isActive('/dashboard/agents')}
+            onClick={() => setIsMobileOpen(false)}
           />
         </NavGroup>
 
@@ -194,6 +204,7 @@ export function Sidebar() {
           <ExpandableNavItem icon={Settings} label="SETTINGS">
             <Link
               href={'/dashboard/settings/phone' as any}
+              onClick={() => setIsMobileOpen(false)}
               className={cn(
                 'block px-3 py-2 text-sm text-slate-blue-300 hover:text-white rounded-md hover:bg-navy-dark-elevated transition-colors',
                 isActive('/dashboard/settings/phone') && 'text-accent-primary'
@@ -203,6 +214,7 @@ export function Sidebar() {
             </Link>
             <Link
               href="/dashboard/settings/ai"
+              onClick={() => setIsMobileOpen(false)}
               className={cn(
                 'block px-3 py-2 text-sm text-slate-blue-300 hover:text-white rounded-md hover:bg-navy-dark-elevated transition-colors',
                 isActive('/dashboard/settings/ai') && 'text-accent-primary'
@@ -212,6 +224,7 @@ export function Sidebar() {
             </Link>
             <Link
               href="/dashboard/settings/voice"
+              onClick={() => setIsMobileOpen(false)}
               className={cn(
                 'block px-3 py-2 text-sm text-slate-blue-300 hover:text-white rounded-md hover:bg-navy-dark-elevated transition-colors',
                 isActive('/dashboard/settings/voice') && 'text-accent-primary'
@@ -221,6 +234,7 @@ export function Sidebar() {
             </Link>
             <Link
               href="/dashboard/settings/twilio"
+              onClick={() => setIsMobileOpen(false)}
               className={cn(
                 'block px-3 py-2 text-sm text-slate-blue-300 hover:text-white rounded-md hover:bg-navy-dark-elevated transition-colors',
                 isActive('/dashboard/settings/twilio') && 'text-accent-primary'
@@ -230,6 +244,7 @@ export function Sidebar() {
             </Link>
             <Link
               href="/dashboard/settings/escalation"
+              onClick={() => setIsMobileOpen(false)}
               className={cn(
                 'block px-3 py-2 text-sm text-slate-blue-300 hover:text-white rounded-md hover:bg-navy-dark-elevated transition-colors',
                 isActive('/dashboard/settings/escalation') && 'text-accent-primary'
@@ -248,12 +263,14 @@ export function Sidebar() {
           icon={HelpCircle}
           label="HELP"
           isActive={isActive('/dashboard/help')}
+          onClick={() => setIsMobileOpen(false)}
         />
         <NavItem
           href="/dashboard/profile"
           icon={User}
           label="PROFILE"
           isActive={isActive('/dashboard/profile')}
+          onClick={() => setIsMobileOpen(false)}
         />
         <button 
           onClick={handleLogout}
@@ -271,7 +288,8 @@ export function Sidebar() {
       {/* Mobile Menu Button */}
       <button
         onClick={() => setIsMobileOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-40 p-2 rounded-md bg-navy-dark-panel border border-navy-dark-border text-slate-blue-300 hover:text-white"
+        className="lg:hidden fixed top-2.5 left-3 z-40 p-2 rounded-lg bg-navy-dark-panel/90 backdrop-blur border border-navy-dark-border text-slate-blue-300 hover:text-white shadow-md focus:outline-none"
+        aria-label="Open Navigation Menu"
       >
         <Menu className="h-5 w-5" />
       </button>
@@ -279,11 +297,11 @@ export function Sidebar() {
       {/* Mobile Sidebar Overlay */}
       {isMobileOpen && (
         <div
-          className="lg:hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+          className="lg:hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm"
           onClick={() => setIsMobileOpen(false)}
         >
           <div
-            className="absolute inset-y-0 left-0 w-64"
+            className="absolute inset-y-0 left-0 w-72 max-w-[85vw] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {sidebarContent}
