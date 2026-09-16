@@ -219,11 +219,13 @@ export default function DialerPage() {
       try {
         setCallStatus('Connecting browser microphone & audio...');
 
+        const targetOrg = organizationId || contextOrgId || '';
         const call = await device.connect({
           params: {
             To: formattedNumber,
             agentName: agentName.trim(),
             companyName: companyName.trim(),
+            organizationId: targetOrg,
           },
         });
 

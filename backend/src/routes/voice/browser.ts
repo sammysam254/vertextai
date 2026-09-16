@@ -97,7 +97,9 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
       ? `${proto}://${host}`
       : (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
 
-    let callerId = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');
+    let callerId = normalizePhoneNumber(
+      config.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER || '+12513571708'
+    );
     const normalizedTo = normalizePhoneNumber(to);
     const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
 
@@ -109,7 +111,7 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
     if (!normalizedTo) {
       const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna-Neural">No destination phone number was provided. Please check the number and try again.</Say>
+  <Say voice="alice">No destination phone number was provided. Please check the number and try again.</Say>
   <Hangup/>
 </Response>`;
       return reply.status(200).type('text/xml').send(twiml);
@@ -142,7 +144,7 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
           logger.warn({ orgId }, 'Outbound call prevented due to depleted wallet and free minutes');
           const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna-Neural">Your CallPulse wallet balance and monthly free minutes are exhausted. Please top up your wallet in the dashboard to make calls.</Say>
+  <Say voice="alice">Your CallPulse wallet balance and monthly free minutes are exhausted. Please top up your wallet in the dashboard to make calls.</Say>
   <Hangup/>
 </Response>`;
           return reply.status(200).type('text/xml').send(twiml);
@@ -173,10 +175,10 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
     // Directly bridge the browser's audio stream to the customer's phone!
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="${escapeXml(callerId)}" timeout="35" action="${escapeXml(dialStatusUrl)}">
+  <Dial callerId="${escapeXml(callerId)}" timeout="35" answerOnBridge="true" action="${escapeXml(dialStatusUrl)}">
     <Number>${escapeXml(normalizedTo)}</Number>
   </Dial>
-  <Say voice="Polly.Joanna-Neural">The recipient is currently unavailable. Please try again later.</Say>
+  <Say voice="alice">The recipient is currently unavailable. Please try again later.</Say>
   <Hangup/>
 </Response>`;
 

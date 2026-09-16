@@ -17,8 +17,8 @@ import {
   QrCode,
   RefreshCw,
   Clock,
-  Sparkles,
   ExternalLink,
+  ChevronRight,
 } from 'lucide-react';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 
@@ -60,6 +60,11 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
   const [customAmount, setCustomAmount] = useState<string>('');
   const [selectedNetwork, setSelectedNetwork] = useState<UsdtNetwork>('TRC20');
 
+  // In-App Paystack state
+  const [paystackIframeUrl, setPaystackIframeUrl] = useState<string | null>(null);
+  const [paystackRef, setPaystackRef] = useState<string | null>(null);
+  const [isVerifyingPaystack, setIsVerifyingPaystack] = useState(false);
+
   // Crypto USDT payment state
   const [cryptoPayment, setCryptoPayment] = useState<{
     paymentId: string;
@@ -69,7 +74,6 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
     networkName: string;
     qrCodeUrl: string;
     orderId: string;
-    invoiceUrl?: string;
   } | null>(null);
 
   const [cryptoStatus, setCryptoStatus] = useState<string>('waiting');
@@ -98,6 +102,19 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
     return path;
   };
 
+  // Load Paystack Inline script on component mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const existing = document.getElementById('paystack-inline-js');
+    if (!existing) {
+      const script = document.createElement('script');
+      script.id = 'paystack-inline-js';
+      script.src = 'https://js.paystack.co/v1/inline.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
   // Check Crypto status callback
   const checkCryptoStatus = useCallback(
     async (paymentId: string, showSpinner = true) => {
@@ -112,7 +129,7 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
           setCryptoStatus(data.status || 'waiting');
 
           if (data.confirmed) {
-            setSuccessMessage(`USDT deposit confirmed! Credited $${data.amountCredited.toFixed(2)} USD to your wallet.`);
+            setSuccessMessage(`USDT deposit confirmed! Added $${data.amountCredited.toFixed(2)} USD to your wallet.`);
             if (onSuccess) onSuccess(data.newBalance);
             if (statusPollRef.current) clearInterval(statusPollRef.current);
             setTimeout(() => {
@@ -149,6 +166,38 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
     setTimeout(() => setCopiedAddress(false), 2000);
   };
 
+  // Verify Paystack in-app
+  const verifyPaystackPayment = async (reference: string) => {
+    setIsVerifyingPaystack(true);
+    setError('');
+    try {
+      const res = await fetch(getApiEndpoint('/api/v1/billing/paystack/verify'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reference,
+          organizationId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Payment not yet confirmed by Paystack');
+      }
+
+      setSuccessMessage(`Payment confirmed! Credited $${data.amountCredited.toFixed(2)} USD to your wallet.`);
+      setPaystackIframeUrl(null);
+      if (onSuccess) onSuccess(data.newBalance);
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+    } catch (err: any) {
+      setError(err.message || 'Could not verify payment yet. Please ensure payment completed.');
+    } finally {
+      setIsVerifyingPaystack(false);
+    }
+  };
+
   const handlePay = async () => {
     if (!organizationId) {
       setError('Organization not found. Please refresh page.');
@@ -183,13 +232,41 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
           throw new Error(data.message || 'Failed to initialize Paystack payment');
         }
 
+        // 100% IN-APP: Open Paystack Inline Pop or Embedded In-App View
+        // Check if PaystackPop is available in window
+        if (typeof window !== 'undefined' && (window as any).PaystackPop && data.access_code) {
+          try {
+            const handler = (window as any).PaystackPop.setup({
+              key: data.publicKey || process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
+              email: user?.email || 'customer@vertext.site',
+              amount: finalAmountKES * 100,
+              currency: 'KES',
+              ref: data.reference,
+              access_code: data.access_code,
+              callback: async (response: any) => {
+                await verifyPaystackPayment(response.reference || data.reference);
+              },
+              onClose: () => {
+                setIsProcessing(false);
+              },
+            });
+            handler.openIframe();
+            setIsProcessing(false);
+            return;
+          } catch (inlineErr) {
+            console.warn('PaystackPop inline error, falling back to in-app frame:', inlineErr);
+          }
+        }
+
+        // Fallback: Display the checkout frame directly in-app inside our modal
         if (data.authorization_url && data.authorization_url !== '#') {
-          // Redirect user to Paystack's official secure checkout
-          window.location.href = data.authorization_url;
+          setPaystackRef(data.reference);
+          setPaystackIframeUrl(data.authorization_url);
+          setIsProcessing(false);
           return;
         }
 
-        throw new Error('Paystack authorization URL was not generated. Check PAYSTACK_SECRET_KEY in Render.');
+        throw new Error('Paystack authorization was not generated. Check PAYSTACK_SECRET_KEY in Render.');
       } else {
         // Direct USDT Multi-Network Deposit with Address & QR Code
         const res = await fetch(getApiEndpoint('/api/v1/billing/nowpayments/usdt-deposit'), {
@@ -215,7 +292,6 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
           networkName: data.networkName,
           qrCodeUrl: data.qrCodeUrl,
           orderId: data.order_id,
-          invoiceUrl: data.invoice_url,
         });
 
         setCryptoStatus(data.payment_status || 'waiting');
@@ -227,8 +303,10 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
     }
   };
 
-  const handleResetCrypto = () => {
+  const handleReset = () => {
     setCryptoPayment(null);
+    setPaystackIframeUrl(null);
+    setPaystackRef(null);
     setCryptoStatus('waiting');
     setError('');
     setSuccessMessage('');
@@ -236,11 +314,15 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn">
-      <Panel className="w-full max-w-lg p-5 sm:p-6 bg-navy-dark-panel border border-navy-dark-border shadow-2xl relative my-auto max-h-[92vh] overflow-y-auto">
+      <Panel
+        className={`w-full ${
+          paystackIframeUrl ? 'max-w-2xl' : 'max-w-lg'
+        } p-5 sm:p-6 bg-navy-dark-panel border border-navy-dark-border shadow-2xl relative my-auto max-h-[92vh] overflow-y-auto transition-all`}
+      >
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-slate-blue-400 hover:text-white rounded-lg hover:bg-navy-dark transition-colors"
+          className="absolute top-4 right-4 p-2 text-slate-blue-400 hover:text-white rounded-lg hover:bg-navy-dark transition-colors z-10"
         >
           <X className="h-5 w-5" />
         </button>
@@ -254,7 +336,7 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
             <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
               Top Up In-App Wallet
               <Badge variant="resolved" className="text-[10px]">
-                Instant Credit
+                100% In-App
               </Badge>
             </h2>
             <p className="text-xs text-slate-blue-400">
@@ -278,8 +360,56 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
           </div>
         )}
 
-        {/* Active Crypto Address & QR Code View */}
-        {cryptoPayment ? (
+        {/* 1. In-App Paystack Embedded Checkout View */}
+        {paystackIframeUrl ? (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 bg-navy-dark rounded-xl border border-navy-dark-border text-xs">
+              <span className="text-slate-blue-300">
+                Amount: <strong className="text-white font-mono">KES {finalAmountKES.toLocaleString()}</strong> (Credits{' '}
+                <span className="text-accent-success font-mono font-bold">${finalAmountUSD.toFixed(2)} USD</span>)
+              </span>
+              <span className="text-[11px] text-chart-cyan flex items-center gap-1 font-mono">
+                <ShieldCheck className="h-3.5 w-3.5" /> 256-bit Secure
+              </span>
+            </div>
+
+            {/* Embedded In-App Iframe Container */}
+            <div className="relative w-full h-[450px] bg-white rounded-xl overflow-hidden shadow-2xl border border-navy-dark-border">
+              <iframe
+                src={paystackIframeUrl}
+                className="w-full h-full border-0"
+                title="Paystack Secure Checkout"
+                allow="payment"
+              />
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => paystackRef && verifyPaystackPayment(paystackRef)}
+                disabled={isVerifyingPaystack}
+                isLoading={isVerifyingPaystack}
+                loadingText="Verifying Payment..."
+                className="w-full sm:w-auto text-xs bg-accent-success hover:bg-accent-success/90 text-white font-bold h-9 px-4"
+              >
+                <Check className="h-4 w-4 mr-1" />
+                I Have Completed Payment
+              </Button>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleReset}
+                className="text-xs text-slate-blue-400 hover:text-white"
+              >
+                Cancel &amp; Change Method
+              </Button>
+            </div>
+          </div>
+        ) : cryptoPayment ? (
+          /* 2. In-App Crypto USDT Address & QR Code View */
           <div className="space-y-4">
             <div className="p-3.5 bg-navy-dark border border-navy-dark-border rounded-xl text-center">
               <div className="flex items-center justify-between mb-2">
@@ -292,7 +422,7 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
                     Status:{' '}
                     <strong className="text-white capitalize">
                       {cryptoStatus === 'waiting'
-                        ? 'Awaiting Payment'
+                        ? 'Awaiting Transfer'
                         : cryptoStatus === 'confirming'
                         ? 'Confirming on Chain'
                         : cryptoStatus}
@@ -304,15 +434,14 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
               {/* QR Code Container */}
               <div className="p-3 bg-white rounded-xl inline-block shadow-lg mx-auto my-1">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={cryptoPayment.qrCodeUrl}
-                  alt="Scan to pay USDT"
-                  className="w-48 h-48 mx-auto"
-                />
+                <img src={cryptoPayment.qrCodeUrl} alt="Scan to pay USDT" className="w-48 h-48 mx-auto" />
               </div>
 
               <div className="mt-2 text-xs text-slate-blue-300">
-                Send exactly <strong className="text-chart-cyan text-sm font-mono font-bold">{cryptoPayment.payAmount.toFixed(2)} USDT</strong>
+                Send exactly{' '}
+                <strong className="text-chart-cyan text-sm font-mono font-bold">
+                  {cryptoPayment.payAmount.toFixed(2)} USDT
+                </strong>
               </div>
             </div>
 
@@ -401,30 +530,18 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
             </div>
 
             {/* Back / Reset */}
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleResetCrypto}
-                className="w-full text-xs text-slate-blue-300 hover:text-white"
-              >
-                Change Amount or Network
-              </Button>
-              {cryptoPayment.invoiceUrl && (
-                <a
-                  href={cryptoPayment.invoiceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-secondary h-8 px-3 text-xs shrink-0 flex items-center gap-1 text-slate-blue-300 hover:text-white"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Hosted Page
-                </a>
-              )}
-            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleReset}
+              className="w-full text-xs text-slate-blue-300 hover:text-white"
+            >
+              Change Amount or Network
+            </Button>
           </div>
         ) : (
+          /* 3. Main Method Selection Screen */
           <div className="space-y-4">
             {/* Payment Method Selector */}
             <div>
@@ -558,7 +675,8 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-blue-400 italic">
-                    Paystack charges strictly in KES (KES {finalAmountKES.toLocaleString()}). Your wallet is credited with exact ${finalAmountUSD.toFixed(2)} USD upon confirmation.
+                    Paystack charges strictly in KES (KES {finalAmountKES.toLocaleString()}) inside the app. Your wallet is
+                    credited with exact ${finalAmountUSD.toFixed(2)} USD upon confirmation.
                   </div>
                 </>
               ) : (
@@ -570,7 +688,7 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-blue-400 italic">
-                    You will receive a dedicated deposit address and QR code to scan directly from your crypto wallet.
+                    You will receive a dedicated deposit address and QR code to scan directly inside the app.
                   </div>
                 </>
               )}
@@ -584,20 +702,20 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
               isLoading={isProcessing}
               loadingText={
                 paymentMethod === 'paystack'
-                  ? `Connecting Paystack (KES ${finalAmountKES.toLocaleString()})...`
+                  ? `Loading In-App Checkout...`
                   : `Generating USDT (${selectedNetwork}) Address...`
               }
               className="w-full h-11 bg-accent-primary hover:bg-accent-primary/90 text-white font-bold text-xs shadow-lg shadow-accent-primary/20"
             >
               {paymentMethod === 'paystack'
-                ? `Pay KES ${finalAmountKES.toLocaleString()} via Paystack (Credits $${finalAmountUSD.toFixed(2)} USD)`
-                : `Generate ${finalAmountUSD.toFixed(2)} USDT (${selectedNetwork}) Deposit Address`}
+                ? `Pay KES ${finalAmountKES.toLocaleString()} via Paystack (In-App Checkout)`
+                : `Generate ${finalAmountUSD.toFixed(2)} USDT (${selectedNetwork}) Address & QR`}
               <ArrowRight className="h-4 w-4 ml-1.5" />
             </Button>
 
             <p className="text-[11px] text-center text-slate-blue-400 flex items-center justify-center gap-1.5">
               <ShieldCheck className="h-3.5 w-3.5 text-accent-success" />
-              256-bit encrypted payment processing • Funds credited only after confirmation
+              100% In-app payment • Zero new tabs • Funds credited only after confirmation
             </p>
           </div>
         )}

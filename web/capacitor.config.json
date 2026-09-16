@@ -1,0 +1,15 @@
+{
+  "appId": "site.vertext.app",
+  "appName": "CallPulse",
+  "webDir": "public",
+  "server": {
+    "url": "https://vertext.site",
+    "cleartext": true,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  }
+}

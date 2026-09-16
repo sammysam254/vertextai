@@ -3,7 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Phone } from 'lucide-react';
+import { Phone, CheckCircle2, Sparkles } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -18,6 +18,7 @@ export default function SignupPage() {
   const [twilioPhone, setTwilioPhone] = useState('');
   const [error, setError]     = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -56,11 +57,13 @@ export default function SignupPage() {
         throw new Error(body.message || 'Failed to set up organisation');
       }
 
-      router.push('/dashboard');
-      router.refresh();
+      setIsSuccess(true);
+      setTimeout(() => {
+        router.push('/dashboard');
+        router.refresh();
+      }, 1400);
     } catch (err: any) {
       setError(err.message || 'Failed to create account');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -77,8 +80,35 @@ export default function SignupPage() {
           <p className="text-slate-blue-400">Create your call center workspace</p>
         </div>
 
-        <div className="panel p-8">
-          <form onSubmit={handleSubmit} className="space-y-5">
+        {isSuccess ? (
+          <div className="panel p-8 text-center space-y-6 animate-fadeIn border border-accent-success/30 shadow-[0_0_40px_#10B98120]">
+            <div className="relative flex items-center justify-center my-2">
+              <div className="w-16 h-16 rounded-full bg-accent-success/20 border border-accent-success/50 flex items-center justify-center shadow-[0_0_25px_#10B98160]">
+                <CheckCircle2 className="h-9 w-9 text-accent-success animate-pulse" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <h2 className="text-lg font-bold text-white flex items-center justify-center gap-2">
+                Workspace Created!
+                <Sparkles className="h-4 w-4 text-chart-cyan" />
+              </h2>
+              <p className="text-xs text-slate-blue-300">
+                Welcome to CallPulse, <strong className="text-white font-semibold">{organizationName}</strong>
+              </p>
+              <p className="text-xs text-chart-cyan font-medium animate-pulse">
+                Provisioning merchant code, numbers &amp; dashboard...
+              </p>
+            </div>
+
+            {/* Glowing animated loading bar */}
+            <div className="w-full h-2 bg-navy-dark rounded-full overflow-hidden border border-navy-dark-border">
+              <div className="h-full bg-gradient-to-r from-chart-cyan via-accent-primary to-accent-success rounded-full animate-pulse w-full" />
+            </div>
+          </div>
+        ) : (
+          <div className="panel p-8">
+            <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <div className="bg-accent-danger/10 border border-accent-danger/20 rounded-md p-3">
                 <p className="text-sm text-accent-danger">{error}</p>
@@ -137,15 +167,16 @@ export default function SignupPage() {
             </Button>
           </form>
 
-          <div className="mt-6 text-center">
-            <p className="text-sm text-slate-blue-400">
-              Already have an account?{' '}
-              <Link href="/login" className="text-accent-primary hover:underline font-medium">
-                Sign in
-              </Link>
-            </p>
+            <div className="mt-6 text-center">
+              <p className="text-sm text-slate-blue-400">
+                Already have an account?{' '}
+                <Link href="/login" className="text-accent-primary hover:underline font-medium">
+                  Sign in
+                </Link>
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         <p className="text-center text-sm text-slate-blue-500 mt-6">
           By signing up, you agree to our Terms of Service
