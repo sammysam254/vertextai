@@ -1,6 +1,6 @@
 {
   "appId": "site.vertext.app",
-  "appName": "CallPulse",
+  "appName": "Contact Centre Insights",
   "webDir": "public",
   "server": {
     "url": "https://vertext.site",

@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Phone, CheckCircle2, Sparkles } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/Button';
@@ -47,12 +48,23 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Phone className="h-10 w-10 text-accent-primary" />
-            <h1 className="text-3xl font-bold text-white">CallPulse</h1>
+          <div className="flex flex-col items-center justify-center gap-3 mb-3">
+            <div className="w-16 h-16 rounded-2xl bg-[#0F1629] border border-cyan-500/40 p-2 shadow-[0_0_30px_rgba(0,212,255,0.3)] flex items-center justify-center">
+              <Image
+                src="/brand/icon.png"
+                alt="Contact Centre Insights"
+                width={56}
+                height={56}
+                className="object-contain"
+                priority
+              />
+            </div>
+            <h1 className="text-2xl font-black tracking-tight text-white uppercase bg-gradient-to-r from-white via-cyan-100 to-cyan-400 bg-clip-text text-transparent">
+              Contact Centre Insights
+            </h1>
           </div>
-          <p className="text-slate-blue-400">
-            Sign in to your call center dashboard
+          <p className="text-sm text-slate-blue-400">
+            Sign in to your AI voice and call operations platform
           </p>
         </div>
 

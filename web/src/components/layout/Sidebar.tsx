@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Home,
@@ -149,11 +150,26 @@ export function Sidebar() {
   const sidebarContent = (
     <div className="h-full flex flex-col bg-navy-dark-panel border-r border-navy-dark-border">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-5 border-b border-navy-dark-border">
-        <div className="flex items-center gap-3">
-          <Phone className="h-6 w-6 text-accent-primary" />
-          <h1 className="text-lg font-bold text-white">CallPulse</h1>
-        </div>
+      <div className="flex items-center justify-between px-4 py-4 border-b border-navy-dark-border">
+        <Link href="/dashboard" className="flex items-center gap-2.5 group">
+          <div className="relative w-8 h-8 rounded-lg overflow-hidden border border-chart-cyan/40 bg-[#0F1629] p-0.5 shadow-[0_0_12px_rgba(0,212,255,0.3)] shrink-0 group-hover:border-chart-cyan transition-colors">
+            <Image
+              src="/brand/icon.png"
+              alt="Contact Centre Insights"
+              width={32}
+              height={32}
+              className="object-contain"
+            />
+          </div>
+          <div className="flex flex-col">
+            <h1 className="text-xs font-black text-white tracking-wider uppercase leading-tight">
+              Contact Centre
+            </h1>
+            <span className="text-[10px] font-semibold text-chart-cyan tracking-widest uppercase">
+              Insights
+            </span>
+          </div>
+        </Link>
         <button
           onClick={() => setIsMobileOpen(false)}
           className="lg:hidden text-slate-blue-400 hover:text-white"

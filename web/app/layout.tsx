@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { LoadingSplash } from '@/components/ui/LoadingSplash';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -9,14 +10,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'CallPulse - AI Call Center & SMS Platform',
-  description: 'Multi-tenant AI-powered call center and SMS automation platform',
+  title: 'Contact Centre Insights - AI Voice & Intelligence',
+  description: 'Enterprise AI-powered contact center, WebRTC dialer, and live voice automation platform',
   icons: {
     icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
   },
 };
-
-import { LoadingSplash } from '@/components/ui/LoadingSplash';
 
 export default function RootLayout({
   children,
@@ -24,8 +24,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className={inter.className}>
+    <html lang="en" className="dark bg-[#0A0E1A]">
+      <body className={`${inter.className} bg-[#0A0E1A] text-white min-h-screen`}>
         <LoadingSplash />
         {children}
       </body>

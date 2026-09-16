@@ -75,6 +75,20 @@ export default function DialerPage() {
 
   const { agents } = useAgents(organizationId || contextOrgId, true);
 
+  // Proactively request browser/Android microphone permission on dialer load
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({ audio: true })
+        .then((stream) => {
+          stream.getTracks().forEach((track) => track.stop());
+        })
+        .catch((err) => {
+          console.warn('Microphone permission status:', err?.name || err);
+        });
+    }
+  }, []);
+
   // Initialize Twilio WebRTC Voice Device for in-browser live calling
   useEffect(() => {
     let isMounted = true;
@@ -94,7 +108,15 @@ export default function DialerPage() {
           return;
         }
 
-        const data = await res.json();
+        const rawText = await res.text();
+        let data: any = null;
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          console.warn('Non-JSON token response:', rawText);
+          return;
+        }
+
         if (!data?.token || !isMounted) return;
 
         // Dynamically import Twilio Voice SDK in browser only
@@ -281,10 +303,16 @@ export default function DialerPage() {
         }),
       });
 
-      const data = await response.json();
+      let data: any = {};
+      const rawText = await response.text();
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        data = { message: rawText || `Server responded with status ${response.status}` };
+      }
 
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to place call');
+        throw new Error(data.message || data.error || `Call request failed (HTTP ${response.status})`);
       }
 
       setIsCallActive(true);

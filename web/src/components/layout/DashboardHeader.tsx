@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { TopUpModal } from '@/components/billing/TopUpModal';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export function DashboardHeader() {
   const { organizationId, merchantCode: contextCode } = useOrganization();
@@ -105,8 +106,17 @@ export function DashboardHeader() {
         </div>
 
         {/* Brand / Title shown only on mobile when sidebar is closed */}
-        <div className="md:hidden flex items-center gap-1.5">
-          <span className="text-sm font-bold text-white tracking-wide">CallPulse</span>
+        <div className="md:hidden flex items-center gap-2">
+          <div className="relative w-6 h-6 rounded-md overflow-hidden border border-chart-cyan/40 bg-[#0F1629] p-0.5 shrink-0">
+            <Image
+              src="/brand/icon.png"
+              alt="Contact Centre Insights"
+              width={24}
+              height={24}
+              className="object-contain"
+            />
+          </div>
+          <span className="text-xs font-black text-white tracking-wider uppercase">Contact Centre</span>
         </div>
 
         {/* Right Section */}
