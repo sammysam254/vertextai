@@ -354,7 +354,7 @@ export function Sidebar() {
       {/* Mobile Menu Button */}
       <button
         onClick={() => setIsMobileOpen(true)}
-        className="lg:hidden fixed top-2.5 left-3 z-40 p-2 rounded-lg bg-navy-dark-panel/90 backdrop-blur border border-navy-dark-border text-slate-blue-300 hover:text-white shadow-md focus:outline-none"
+        className="lg:hidden fixed top-[max(calc(env(safe-area-inset-top,0px)+0.5rem),0.65rem)] left-2.5 z-40 p-2 rounded-lg bg-navy-dark-panel/90 backdrop-blur border border-navy-dark-border text-slate-blue-300 hover:text-white shadow-md focus:outline-none"
         aria-label="Open Navigation Menu"
       >
         <Menu className="h-5 w-5" />

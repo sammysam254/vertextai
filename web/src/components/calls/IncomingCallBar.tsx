@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import {
   PhoneCall,
@@ -10,8 +11,11 @@ import {
   MicOff,
   Volume2,
   ArrowRightLeft,
-  X,
-  Sparkles,
+  Minimize2,
+  Maximize2,
+  Radio,
+  User,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { formatDuration, formatPhoneNumber } from '@/lib/utils';
@@ -30,11 +34,13 @@ export function IncomingCallBar() {
   const [isTransferring, setIsTransferring] = useState<boolean>(false);
   const [transferStatus, setTransferStatus] = useState<string>('');
   const [audioChimeActive, setAudioChimeActive] = useState<boolean>(false);
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
 
   const deviceRef = useRef<any>(null);
   const activeCallRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const chimeIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const vibrationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { agents } = useAgents(organizationId, true);
 
@@ -45,8 +51,33 @@ export function IncomingCallBar() {
     return path;
   };
 
+  // Vibration support for mobile devices
+  const startVibration = () => {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate([400, 200, 400, 200, 600]);
+        vibrationIntervalRef.current = setInterval(() => {
+          navigator.vibrate([400, 200, 400, 200, 600]);
+        }, 2500);
+      } catch {}
+    }
+  };
+
+  const stopVibration = () => {
+    if (vibrationIntervalRef.current) {
+      clearInterval(vibrationIntervalRef.current);
+      vibrationIntervalRef.current = null;
+    }
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(0);
+      } catch {}
+    }
+  };
+
   // Play synthetic telephone ring tone using Web Audio API
   const startRingChime = () => {
+    startVibration();
     try {
       if (audioContextRef.current) return;
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -66,8 +97,8 @@ export function IncomingCallBar() {
         osc1.frequency.setValueAtTime(440, now); // 440 Hz
         osc2.frequency.setValueAtTime(480, now); // 480 Hz
 
-        gain.gain.setValueAtTime(0.12, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.6);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
 
         osc1.connect(gain);
         osc2.connect(gain);
@@ -75,8 +106,8 @@ export function IncomingCallBar() {
 
         osc1.start(now);
         osc2.start(now);
-        osc1.stop(now + 1.6);
-        osc2.stop(now + 1.6);
+        osc1.stop(now + 1.8);
+        osc2.stop(now + 1.8);
       };
 
       playTone();
@@ -88,6 +119,7 @@ export function IncomingCallBar() {
   };
 
   const stopRingChime = () => {
+    stopVibration();
     if (chimeIntervalRef.current) {
       clearInterval(chimeIntervalRef.current);
       chimeIntervalRef.current = null;
@@ -128,6 +160,7 @@ export function IncomingCallBar() {
           console.log('Incoming call arrived:', call.parameters);
           setIncomingCall(call);
           setCallerNumber(call.parameters?.From || 'Anonymous Caller');
+          setIsMinimized(false);
           startRingChime();
 
           call.on('cancel', () => {
@@ -285,137 +318,187 @@ export function IncomingCallBar() {
   }
 
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 w-[95vw] max-w-2xl animate-in fade-in slide-in-from-top-4 duration-300">
-      {/* INCOMING RINGING CALL */}
+    <>
+      {/* 1. WHATSAPP-STYLE FULL SCREEN INCOMING CALL MODAL */}
       {incomingCall && (
-        <div className="bg-navy-dark-panel/95 backdrop-blur-md border-2 border-accent-primary rounded-xl p-4 sm:p-5 shadow-2xl shadow-accent-primary/20 text-white">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-full bg-accent-primary/20 border border-accent-primary/40 flex items-center justify-center text-accent-primary animate-pulse">
-                <PhoneIncoming className="h-6 w-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 rounded-full bg-accent-primary animate-ping" />
-                  <span className="text-xs font-semibold text-accent-primary uppercase tracking-wider">
-                    Incoming Call for {organizationName || 'Your Store'}
-                  </span>
+        <div className="fixed inset-0 z-[9999] flex flex-col justify-between items-center bg-gradient-to-b from-[#0A1020] via-[#070B16] to-[#04060C] text-white p-6 pt-safe pb-safe select-none overflow-hidden animate-in fade-in duration-300">
+          {/* Ambient Cyber Light Glows */}
+          <div className="absolute w-[450px] h-[450px] rounded-full bg-emerald-500/10 blur-[120px] pointer-events-none animate-pulse" />
+          <div className="absolute w-[350px] h-[350px] rounded-full bg-cyan-500/15 blur-[100px] pointer-events-none" />
+
+          {/* Top Header Information */}
+          <div className="relative z-10 flex flex-col items-center text-center space-y-2 pt-4">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-xs font-semibold uppercase tracking-wider shadow-sm">
+              <Radio className="h-3 w-3 animate-pulse" />
+              Incoming Voice Call
+            </div>
+            <p className="text-xs text-slate-400 font-medium">
+              Routed to Merchant #{merchantCode} • {organizationName || 'Contact Centre'}
+            </p>
+          </div>
+
+          {/* Center: Concentric Radar Pulse Waves & Big Avatar */}
+          <div className="relative z-10 flex flex-col items-center text-center my-auto">
+            <div className="relative flex items-center justify-center my-4">
+              {/* Outer Ripple 1 */}
+              <div className="absolute w-60 h-60 sm:w-72 sm:h-72 rounded-full border border-emerald-400/20 animate-ping [animation-duration:2.8s]" />
+              {/* Ripple 2 */}
+              <div className="absolute w-48 h-48 sm:w-56 sm:h-56 rounded-full border border-cyan-400/30 animate-[pulse_2s_infinite]" />
+
+              {/* Central Glowing Avatar Circle */}
+              <div className="relative w-32 h-32 sm:w-36 sm:h-36 rounded-full bg-[#0F172A] border-2 border-emerald-400/70 shadow-[0_0_50px_rgba(16,185,129,0.45)] flex items-center justify-center overflow-hidden">
+                <div className="w-20 h-20 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 animate-pulse">
+                  <PhoneIncoming className="h-10 w-10 sm:h-12 sm:w-12" />
                 </div>
-                <h3 className="text-lg sm:text-xl font-mono font-bold text-white">
-                  {formatPhoneNumber(callerNumber)}
-                </h3>
-                <p className="text-xs text-slate-blue-400">
-                  Routed via Merchant ID <strong className="text-white font-mono">{merchantCode}</strong>
-                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 w-full sm:w-auto">
-              <Button
-                variant="secondary"
+            {/* Caller Number */}
+            <h2 className="text-2xl sm:text-4xl font-mono font-black tracking-wide text-white mt-4 drop-shadow-md">
+              {formatPhoneNumber(callerNumber)}
+            </h2>
+            <p className="text-sm text-cyan-300 font-medium mt-1 animate-pulse">
+              CallPulse Audio Gateway • Ringing...
+            </p>
+          </div>
+
+          {/* Bottom WhatsApp-Style Action Buttons */}
+          <div className="relative z-10 flex items-center justify-center gap-14 sm:gap-20 pb-6 w-full max-w-sm">
+            {/* Decline Button */}
+            <div className="flex flex-col items-center gap-2">
+              <button
                 onClick={handleReject}
-                className="flex-1 sm:flex-none h-11 px-4 bg-accent-danger/20 hover:bg-accent-danger/30 text-accent-danger border-accent-danger/40 text-xs sm:text-sm font-semibold"
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 shadow-[0_0_35px_rgba(239,68,68,0.6)] flex items-center justify-center text-white transition-all cursor-pointer"
+                title="Decline Call"
+                aria-label="Decline Call"
               >
-                <PhoneOff className="h-4 w-4 mr-1.5" />
-                Decline
-              </Button>
-              <Button
-                variant="primary"
+                <PhoneOff className="h-7 w-7 sm:h-9 sm:w-9" />
+              </button>
+              <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Decline</span>
+            </div>
+
+            {/* Answer Button */}
+            <div className="flex flex-col items-center gap-2">
+              <button
                 onClick={handleAnswer}
-                className="flex-1 sm:flex-none h-11 px-6 bg-accent-success hover:bg-accent-success/90 text-white text-xs sm:text-sm font-bold shadow-lg shadow-accent-success/25"
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-emerald-500 hover:bg-emerald-600 active:scale-95 shadow-[0_0_45px_rgba(16,185,129,0.8)] flex items-center justify-center text-white transition-all cursor-pointer animate-bounce"
+                title="Answer Call"
+                aria-label="Answer Call"
               >
-                <PhoneCall className="h-4 w-4 mr-1.5" />
-                Answer Call
-              </Button>
+                <PhoneCall className="h-7 w-7 sm:h-9 sm:w-9" />
+              </button>
+              <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Answer</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* ACTIVE CALL IN PROGRESS */}
+      {/* 2. ACTIVE CONNECTED CALL (Minimized Bar or Expanded Panel) */}
       {isCallActive && (
-        <div className="bg-navy-dark-panel/95 backdrop-blur-md border border-accent-success/40 rounded-xl p-4 shadow-2xl shadow-accent-success/15 text-white">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-accent-success/20 flex items-center justify-center text-accent-success">
-                <Volume2 className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 rounded-full bg-accent-success animate-ping" />
-                  <span className="text-xs font-semibold text-accent-success">Live Call Connected</span>
-                  <span className="text-xs font-mono font-bold bg-navy-dark px-2 py-0.5 rounded text-white border border-slate-700">
-                    {formatDuration(callDuration)}
-                  </span>
+        <div
+          className={`fixed z-50 transition-all duration-300 ${
+            isMinimized
+              ? 'top-2.5 left-1/2 -translate-x-1/2 w-[92vw] max-w-md'
+              : 'top-3 left-1/2 -translate-x-1/2 w-[95vw] max-w-2xl'
+          }`}
+        >
+          <div className="bg-navy-dark-panel/95 backdrop-blur-md border border-accent-success/40 rounded-xl p-3.5 sm:p-4 shadow-2xl shadow-accent-success/15 text-white">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 sm:gap-3">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-accent-success/20 flex items-center justify-center text-accent-success shrink-0">
+                  <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 animate-pulse" />
                 </div>
-                <p className="text-sm font-mono font-medium text-white">{formatPhoneNumber(callerNumber)}</p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-accent-success animate-ping" />
+                    <span className="text-xs font-semibold text-accent-success">Live Call</span>
+                    <span className="text-xs font-mono font-bold bg-navy-dark px-2 py-0.5 rounded text-white border border-slate-700">
+                      {formatDuration(callDuration)}
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm font-mono font-medium text-white">{formatPhoneNumber(callerNumber)}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleToggleMute}
+                  className={`h-8 sm:h-9 text-xs px-2.5 ${
+                    isMuted ? 'bg-accent-danger/20 text-accent-danger border-accent-danger/40' : ''
+                  }`}
+                  title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                >
+                  {isMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                  <span className="hidden xs:inline ml-1">{isMuted ? 'Unmute' : 'Mute'}</span>
+                </Button>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleHangup}
+                  className="h-8 sm:h-9 px-3 bg-accent-danger hover:bg-accent-danger/90 text-white font-semibold text-xs shadow-md"
+                  title="Hang up call"
+                >
+                  <PhoneOff className="h-3.5 w-3.5 mr-1" />
+                  End
+                </Button>
+
+                <button
+                  onClick={() => setIsMinimized(!isMinimized)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-md hover:bg-navy-dark-elevated transition-colors"
+                  title={isMinimized ? 'Expand call controls' : 'Minimize call bar'}
+                >
+                  {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleToggleMute}
-                className={`h-9 text-xs ${isMuted ? 'bg-accent-danger/20 text-accent-danger border-accent-danger/40' : ''}`}
-              >
-                {isMuted ? <MicOff className="h-3.5 w-3.5 mr-1" /> : <Mic className="h-3.5 w-3.5 mr-1" />}
-                {isMuted ? 'Unmute' : 'Mute'}
-              </Button>
-
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleHangup}
-                className="h-9 bg-accent-danger hover:bg-accent-danger/90 text-white font-semibold text-xs"
-              >
-                <PhoneOff className="h-3.5 w-3.5 mr-1" />
-                End Call
-              </Button>
-            </div>
-          </div>
-
-          {/* Quick Transfer Row */}
-          <div className="mt-3 pt-3 border-t border-navy-dark-border flex flex-wrap items-center gap-2">
-            <span className="text-xs text-slate-blue-400 flex items-center gap-1">
-              <ArrowRightLeft className="h-3 w-3 text-accent-primary" /> Transfer to:
-            </span>
-            {agents.length > 0 && (
-              <select
-                onChange={(e) => setTransferPhone(e.target.value)}
-                value={transferPhone}
-                className="px-2 py-1 bg-navy-dark border border-navy-dark-border rounded text-xs text-white"
-              >
-                <option value="">-- Choose registered agent --</option>
-                {agents.map((ag) => (
-                  <option key={ag.id} value={ag.phone_number}>
-                    {ag.name} ({ag.phone_number})
-                  </option>
-                ))}
-              </select>
-            )}
-            <input
-              type="tel"
-              placeholder="Or phone number..."
-              value={transferPhone}
-              onChange={(e) => setTransferPhone(e.target.value)}
-              className="input !h-7 text-xs font-mono !w-36"
-            />
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleTransfer}
-              disabled={!transferPhone.trim() || isTransferring}
-              className="!h-7 text-xs px-2.5 bg-accent-primary/20 hover:bg-accent-primary/30 text-accent-primary border-accent-primary/40"
-            >
-              {isTransferring ? 'Transferring...' : 'Transfer'}
-            </Button>
-            {transferStatus && (
-              <span className="text-xs text-accent-success ml-2">{transferStatus}</span>
+            {/* Quick Transfer Row (Visible when expanded) */}
+            {!isMinimized && (
+              <div className="mt-3 pt-3 border-t border-navy-dark-border flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-slate-blue-400 flex items-center gap-1">
+                  <ArrowRightLeft className="h-3 w-3 text-accent-primary" /> Transfer:
+                </span>
+                {agents.length > 0 && (
+                  <select
+                    onChange={(e) => setTransferPhone(e.target.value)}
+                    value={transferPhone}
+                    className="px-2 py-1 bg-navy-dark border border-navy-dark-border rounded text-xs text-white max-w-[150px] sm:max-w-none truncate"
+                  >
+                    <option value="">-- Choose agent --</option>
+                    {agents.map((ag) => (
+                      <option key={ag.id} value={ag.phone_number}>
+                        {ag.name} ({ag.phone_number})
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <input
+                  type="tel"
+                  placeholder="Phone number..."
+                  value={transferPhone}
+                  onChange={(e) => setTransferPhone(e.target.value)}
+                  className="input !h-7 text-xs font-mono !w-32"
+                />
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleTransfer}
+                  disabled={!transferPhone.trim() || isTransferring}
+                  className="!h-7 text-xs px-2.5 bg-accent-primary/20 hover:bg-accent-primary/30 text-accent-primary border-accent-primary/40"
+                >
+                  {isTransferring ? 'Transferring...' : 'Transfer'}
+                </Button>
+                {transferStatus && (
+                  <span className="text-xs text-accent-success ml-1">{transferStatus}</span>
+                )}
+              </div>
             )}
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

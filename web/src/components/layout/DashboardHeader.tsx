@@ -98,8 +98,8 @@ export function DashboardHeader() {
     : '?';
 
   return (
-    <header className="sticky top-0 z-30 bg-navy-dark/95 backdrop-blur-sm border-b border-navy-dark-border">
-      <div className="flex items-center justify-between pl-14 pr-3 sm:px-6 py-2.5 sm:py-4 min-h-[58px]">
+    <header className="sticky top-0 z-30 bg-navy-dark/95 backdrop-blur-sm border-b border-navy-dark-border pt-safe">
+      <div className="flex items-center justify-between pl-13 pr-2.5 sm:px-6 py-2 sm:py-3 min-h-[54px]">
         {/* Search - Visible on tablet and desktop */}
         <div className="hidden md:block flex-1 max-w-xs lg:max-w-md mr-4">
           <div className="relative">
@@ -113,8 +113,8 @@ export function DashboardHeader() {
         </div>
 
         {/* Brand / Title shown only on mobile when sidebar is closed */}
-        <div className="md:hidden flex items-center gap-2">
-          <div className="relative w-6 h-6 rounded-md overflow-hidden border border-chart-cyan/40 bg-[#0F1629] p-0.5 shrink-0">
+        <div className="md:hidden flex items-center gap-1.5 shrink-0">
+          <div className="relative w-6 h-6 rounded-md overflow-hidden border border-chart-cyan/40 bg-[#0F1629] p-0.5 shrink-0 shadow-sm">
             <Image
               src="/brand/icon.png"
               alt="Contact Centre Insights"
@@ -123,16 +123,16 @@ export function DashboardHeader() {
               className="object-contain"
             />
           </div>
-          <span className="text-xs font-black text-white tracking-wider uppercase">Contact Centre</span>
+          <span className="text-[11px] font-black text-white tracking-wider uppercase hidden sm:inline">Contact Centre</span>
         </div>
 
         {/* Right Section */}
-        <div className="flex items-center gap-1.5 sm:gap-3 ml-auto">
+        <div className="flex items-center gap-1 sm:gap-2.5 ml-auto">
           {/* Active Call Live Indicator */}
           {activeCallCount > 0 && (
             <Link
               href="/dashboard/calls"
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-accent-success/20 border border-accent-success/40 text-accent-success text-[11px] sm:text-xs font-semibold animate-pulse shrink-0"
+              className="flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-accent-success/20 border border-accent-success/40 text-accent-success text-[10px] sm:text-xs font-semibold animate-pulse shrink-0"
               title={`${activeCallCount} active call in progress`}
             >
               <PhoneIncoming className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
@@ -145,10 +145,10 @@ export function DashboardHeader() {
           <div
             onClick={() => setIsTopUpOpen(true)}
             title="Available in-app wallet balance for voice minutes and dedicated numbers. Click to top up."
-            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 bg-accent-primary/15 hover:bg-accent-primary/25 border border-accent-primary/40 hover:border-chart-cyan rounded-lg cursor-pointer transition-all text-xs shrink-0 shadow-sm"
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 bg-accent-primary/15 hover:bg-accent-primary/25 border border-accent-primary/40 hover:border-chart-cyan rounded-lg cursor-pointer transition-all text-xs shrink-0 shadow-sm"
           >
-            <Coins className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-chart-cyan shrink-0" />
-            <span className="text-slate-blue-300 font-medium hidden sm:inline text-xs">Wallet:</span>
+            <Coins className="h-3.5 w-3.5 text-chart-cyan shrink-0" />
+            <span className="text-slate-blue-300 font-medium hidden md:inline text-xs">Wallet:</span>
             <span className="font-mono font-bold text-white tracking-wide text-[11px] sm:text-xs">
               ${walletBalance.toFixed(2)}
             </span>
@@ -158,35 +158,34 @@ export function DashboardHeader() {
           <div
             onClick={copyMerchantCode}
             title="Callers to +1 (251) 357-1708 dial this 6-digit merchant code to reach you. Click to copy."
-            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-navy-dark-elevated hover:bg-navy-dark-elevated/80 border border-chart-cyan/30 hover:border-chart-cyan rounded-lg cursor-pointer transition-colors text-xs shrink-0"
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 bg-navy-dark-elevated hover:bg-navy-dark-elevated/80 border border-chart-cyan/30 hover:border-chart-cyan rounded-lg cursor-pointer transition-colors text-xs shrink-0"
           >
-            <Hash className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-chart-cyan shrink-0" />
-            <span className="text-slate-blue-300 font-medium hidden sm:inline text-xs">Merchant:</span>
+            <Hash className="h-3.5 w-3.5 text-chart-cyan shrink-0" />
+            <span className="text-slate-blue-300 font-medium hidden md:inline text-xs">Merchant:</span>
             <span className="font-mono font-bold text-white tracking-wider text-[11px] sm:text-xs">{merchantCode}</span>
             {copied ? (
               <Check className="h-3 w-3 text-accent-success ml-0.5" />
             ) : (
-              <Copy className="h-3 w-3 text-slate-blue-400 hover:text-white ml-0.5 hidden xs:inline" />
+              <Copy className="h-3 w-3 text-slate-blue-400 hover:text-white ml-0.5 hidden sm:inline" />
             )}
           </div>
 
           {/* Notifications */}
-          <button className="relative p-1.5 sm:p-2 rounded-md text-slate-blue-300 hover:text-white hover:bg-navy-dark-elevated transition-colors shrink-0">
+          <button className="hidden xs:flex relative p-1.5 rounded-md text-slate-blue-300 hover:text-white hover:bg-navy-dark-elevated transition-colors shrink-0">
             <Bell className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
 
           {/* User Profile */}
-          <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 border-l border-navy-dark-border shrink-0">
-            <div className="text-right hidden xs:block">
-              <p className="text-xs sm:text-sm font-medium text-white max-w-[80px] sm:max-w-[130px] truncate">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 pl-1.5 sm:pl-2.5 border-l border-navy-dark-border shrink-0">
+            <div className="text-right hidden sm:block">
+              <p className="text-xs sm:text-sm font-medium text-white max-w-[90px] sm:max-w-[130px] truncate">
                 {userName || 'User'}
               </p>
-              <p className="text-[10px] sm:text-xs text-slate-blue-400 truncate max-w-[130px] hidden sm:block">
+              <p className="text-[10px] sm:text-xs text-slate-blue-400 truncate max-w-[130px] hidden md:block">
                 {userEmail}
               </p>
             </div>
-            <Avatar size="sm" fallback={initials} className="sm:hidden" />
-            <Avatar size="md" fallback={initials} className="hidden sm:inline-flex" />
+            <Avatar size="sm" fallback={initials} />
           </div>
         </div>
       </div>

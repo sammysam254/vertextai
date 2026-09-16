@@ -18,6 +18,10 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Match system bars to deep dark theme
+        getWindow().setStatusBarColor(0xFF0A0E1A);
+        getWindow().setNavigationBarColor(0xFF0A0E1A);
+
         // Request microphone and audio permissions required for in-app dialer & voice
         checkAndRequestAudioPermissions();
     }

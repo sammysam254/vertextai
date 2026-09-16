@@ -8,6 +8,7 @@ import { Phone, CheckCircle2, Sparkles } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { LoadingSplash } from '@/components/ui/LoadingSplash';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,12 +32,12 @@ export default function LoginPage() {
 
       if (error) throw error;
 
-      // Show beautiful workspace loading animation before navigating
+      // Show full-screen cyber workspace loading animation before navigating
       setIsSuccess(true);
       setTimeout(() => {
         router.push('/dashboard');
         router.refresh();
-      }, 1200);
+      }, 1500);
     } catch (err: any) {
       setError(err.message || 'Failed to sign in');
       setIsLoading(false);
@@ -45,6 +46,9 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-navy-dark flex items-center justify-center px-4">
+      {/* Full screen cyber loading animation taking over the whole screen */}
+      {isSuccess && <LoadingSplash persist={true} />}
+
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
@@ -68,36 +72,8 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Post-Login Workspace Loading Screen */}
-        {isSuccess ? (
-          <div className="panel p-8 text-center space-y-6 animate-fadeIn border border-accent-success/30 shadow-[0_0_40px_#10B98120]">
-            <div className="relative flex items-center justify-center my-2">
-              <div className="w-16 h-16 rounded-full bg-accent-success/20 border border-accent-success/50 flex items-center justify-center shadow-[0_0_25px_#10B98160]">
-                <CheckCircle2 className="h-9 w-9 text-accent-success animate-pulse" />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <h2 className="text-lg font-bold text-white flex items-center justify-center gap-2">
-                Authentication Successful
-                <Sparkles className="h-4 w-4 text-chart-cyan" />
-              </h2>
-              <p className="text-xs text-slate-blue-300">
-                Welcome back, <strong className="text-white font-mono">{email}</strong>
-              </p>
-              <p className="text-xs text-chart-cyan font-medium animate-pulse">
-                Setting up call center &amp; loading your workspace...
-              </p>
-            </div>
-
-            {/* Glowing animated loading bar */}
-            <div className="w-full h-2 bg-navy-dark rounded-full overflow-hidden border border-navy-dark-border">
-              <div className="h-full bg-gradient-to-r from-chart-cyan via-accent-primary to-accent-success rounded-full animate-pulse w-full" />
-            </div>
-          </div>
-        ) : (
-          /* Login Form */
-          <div className="panel p-8">
+        {/* Login Form */}
+        <div className="panel p-8">
             <form onSubmit={handleSubmit} className="space-y-6">
               {error && (
                 <div className="bg-accent-danger/10 border border-accent-danger/20 rounded-md p-3">
@@ -148,7 +124,6 @@ export default function LoginPage() {
               </p>
             </div>
           </div>
-        )}
 
         {/* Footer */}
         <p className="text-center text-sm text-slate-blue-500 mt-6">
