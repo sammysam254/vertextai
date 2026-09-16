@@ -38,7 +38,11 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
 
-    const { listCommunications } = await import('@/services/database');
+    const { listCommunications, reapStaleCommunications } = await import('@/services/database');
+    
+    // Auto-reap any stale abandoned calls older than 20 minutes
+    await reapStaleCommunications(organizationId);
+
     const result = await listCommunications({
       organizationId,
       status: 'in-progress',
@@ -46,11 +50,14 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
       offset: 0,
     });
 
-    // Exclude calls whose transfer is completed/failed/ended or status is no longer active
+    // Exclude calls whose transfer is completed/failed/ended, status is no longer active, or started >20 mins ago
     const terminalTransferStatuses = ['completed', 'failed', 'busy', 'no_answer'];
+    const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
+
     const activeCalls = (result.communications || []).filter((c: any) => {
       if (c.status === 'completed' || c.status === 'failed' || c.status === 'canceled') return false;
       if (c.transfer_status && terminalTransferStatuses.includes(c.transfer_status)) return false;
+      if (c.created_at && new Date(c.created_at) < twentyMinsAgo) return false;
       return true;
     });
 

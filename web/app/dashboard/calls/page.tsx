@@ -58,6 +58,19 @@ export default async function CallsPage() {
   }
 
   if (organizationId) {
+    // Clean up any stale in-progress calls older than 20 minutes
+    const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    try {
+      await supabase
+        .from('communications')
+        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .eq('organization_id', organizationId)
+        .in('status', ['in-progress', 'ringing'])
+        .lt('created_at', twentyMinsAgo);
+    } catch (e) {
+      console.warn('Note updating stale calls:', e);
+    }
+
     // Real call history — latest 50, all voice types
     const { data } = await supabase
       .from('communications')
@@ -154,17 +167,29 @@ export default async function CallsPage() {
                     </TableCell>
 
                     <TableCell>
-                      <Badge
-                        variant={
-                          call.status === 'completed'    ? 'resolved'
-                          : call.status === 'in-progress' ? 'in-call'
-                          : call.status === 'ringing'     ? 'waiting'
-                          : 'offline'
-                        }
-                        dot
-                      >
-                        {call.status.toUpperCase().replace('-', ' ')}
-                      </Badge>
+                      {(() => {
+                        const isStale =
+                          call.status === 'in-progress' &&
+                          (Date.now() - new Date(call.created_at).getTime() > 20 * 60 * 1000 ||
+                            ['completed', 'failed', 'busy', 'no_answer'].includes(call.transfer_status));
+                        const displayStatus = isStale ? 'completed' : call.status;
+                        return (
+                          <Badge
+                            variant={
+                              displayStatus === 'completed'
+                                ? 'resolved'
+                                : displayStatus === 'in-progress'
+                                ? 'in-call'
+                                : displayStatus === 'ringing'
+                                ? 'waiting'
+                                : 'offline'
+                            }
+                            dot
+                          >
+                            {displayStatus.toUpperCase().replace('-', ' ')}
+                          </Badge>
+                        );
+                      })()}
                     </TableCell>
 
                     <TableCell>

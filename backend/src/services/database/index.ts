@@ -31,6 +31,7 @@ export {
   listCommunications,
   saveTranscriptTurn,
   getFullTranscript,
+  reapStaleCommunications,
 } from './communication.service';
 
 // Message services

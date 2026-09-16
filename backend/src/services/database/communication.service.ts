@@ -304,3 +304,60 @@ export async function getFullTranscript(
     throw new AppError('Failed to get transcript', 500);
   }
 }
+
+/**
+ * Auto-reap stale in-progress calls older than maxAgeMinutes or with terminal transfer_status
+ */
+export async function reapStaleCommunications(organizationId?: string): Promise<number> {
+  try {
+    const cutoff = new Date(Date.now() - 20 * 60 * 1000).toISOString(); // 20 minutes ago
+
+    let query = supabase
+      .from('communications')
+      .select('id, duration_seconds, transfer_status, created_at')
+      .in('status', ['in-progress', 'ringing'])
+      .in('type', ['voice_in', 'voice_out']);
+
+    if (organizationId && UUID_REGEX.test(organizationId)) {
+      query = query.eq('organization_id', organizationId);
+    }
+
+    const { data: staleCalls, error } = await query;
+    if (error || !staleCalls || staleCalls.length === 0) {
+      return 0;
+    }
+
+    const terminalTransferStatuses = ['completed', 'failed', 'busy', 'no_answer'];
+    const idsToReap: string[] = [];
+
+    for (const c of staleCalls) {
+      const isOlderThanCutoff = new Date(c.created_at) < new Date(cutoff);
+      const isTransferEnded = c.transfer_status && terminalTransferStatuses.includes(c.transfer_status);
+
+      if (isOlderThanCutoff || isTransferEnded) {
+        idsToReap.push(c.id);
+      }
+    }
+
+    if (idsToReap.length === 0) return 0;
+
+    const { error: updateErr } = await supabase
+      .from('communications')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      })
+      .in('id', idsToReap);
+
+    if (updateErr) {
+      logger.error({ updateErr }, 'Error updating stale communications');
+      return 0;
+    }
+
+    logger.info({ reapedCount: idsToReap.length }, 'Reaped stale in-progress communications');
+    return idsToReap.length;
+  } catch (err) {
+    logger.debug({ err }, 'Note running reapStaleCommunications');
+    return 0;
+  }
+}
