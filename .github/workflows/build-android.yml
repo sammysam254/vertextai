@@ -28,11 +28,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'web/package.json'
 
-      - name: Set up Java 17 (JDK)
+      - name: Set up Java 21 (JDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
           cache: 'gradle'
 
       - name: Accept Android SDK Licenses

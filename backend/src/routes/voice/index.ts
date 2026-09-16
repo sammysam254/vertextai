@@ -3,7 +3,6 @@
 // ==============================================
 
 import { FastifyInstance } from 'fastify';
-import { twilioSignatureHook } from '@/middleware';
 import { handleIncomingCall, handleMerchantRoute } from './incoming';
 import { handleConversationTurn } from './turn';
 import { handleCallStatus } from './status';
@@ -22,24 +21,20 @@ export async function voiceRoutes(app: FastifyInstance) {
   // Outbound call route (no Twilio signature required — called from frontend)
   app.register(outboundCallRoutes);
 
-  // All webhook routes below require Twilio signature validation
-  app.register(async (webhookScope) => {
-    webhookScope.addHook('preHandler', twilioSignatureHook());
+  // Voice Webhook routes (Support both POST and GET for all Twilio webhook types)
+  app.all('/incoming', handleIncomingCall);
+  app.all('/browser-call', handleIncomingCall);
+  app.all('/call', handleIncomingCall);
 
-    // Inbound call webhook
-    webhookScope.post('/incoming', handleIncomingCall);
+  // 6-Digit Merchant Code Routing
+  app.all('/merchant-route', handleMerchantRoute);
 
-    // 6-Digit Merchant Code Routing
-    webhookScope.post('/merchant-route', handleMerchantRoute);
-    webhookScope.get('/merchant-route', handleMerchantRoute);
+  // Conversation turn handler
+  app.all('/turn', handleConversationTurn);
 
-    // Conversation turn handler
-    webhookScope.post('/turn', handleConversationTurn);
+  // Call status callbacks (completed, failed, etc.)
+  app.all('/status', handleCallStatus);
 
-    // Call status callbacks (completed, failed, etc.)
-    webhookScope.post('/status', handleCallStatus);
-
-    // Dial/transfer status callbacks
-    webhookScope.post('/dial-status', handleDialStatus);
-  });
+  // Dial/transfer status callbacks
+  app.all('/dial-status', handleDialStatus);
 }
