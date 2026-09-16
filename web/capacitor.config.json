@@ -5,7 +5,16 @@
   "server": {
     "url": "https://vertext.site",
     "cleartext": true,
-    "androidScheme": "https"
+    "allowNavigation": [
+      "vertext.site",
+      "*.vertext.site",
+      "vertextai-3lit.onrender.com",
+      "*.onrender.com",
+      "*.supabase.co",
+      "*.paystack.co",
+      "*.nowpayments.io",
+      "*"
+    ]
   },
   "android": {
     "allowMixedContent": true,
