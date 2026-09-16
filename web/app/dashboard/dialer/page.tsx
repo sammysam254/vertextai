@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/Button';
 import { Phone, Delete, X, PhoneCall, PhoneOff, UserCheck, ArrowRightLeft, Building, User } from 'lucide-react';
 import { formatPhoneNumber } from '@/lib/utils';
 
+import { createClient } from '@/lib/supabase/client';
+import { useAgents } from '@/lib/hooks/useCalls';
+
 export default function DialerPage() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [agentName, setAgentName] = useState('Support Agent');
@@ -15,6 +18,7 @@ export default function DialerPage() {
   const [callStatus, setCallStatus] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [organizationId, setOrganizationId] = useState<string | null>(null);
 
   // Transfer state
   const [transferPhone, setTransferPhone] = useState('');
@@ -23,6 +27,41 @@ export default function DialerPage() {
   const [transferMessage, setTransferMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const twilioPhone = process.env.NEXT_PUBLIC_TWILIO_PHONE || '+12513571708';
+  const supabase = createClient();
+
+  // Resolve organization ID for agents
+  useEffect(() => {
+    async function loadOrg() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: mem } = await supabase
+            .from('organization_members')
+            .select('organization_id')
+            .eq('user_id', user.id)
+            .limit(1)
+            .maybeSingle();
+          if (mem?.organization_id) {
+            setOrganizationId(mem.organization_id);
+            return;
+          }
+        }
+        const { data: firstOrg } = await supabase
+          .from('organizations')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+        if (firstOrg?.id) {
+          setOrganizationId(firstOrg.id);
+        }
+      } catch (e) {
+        console.error('Error resolving organization:', e);
+      }
+    }
+    loadOrg();
+  }, [supabase]);
+
+  const { agents } = useAgents(organizationId, true);
 
   const getApiEndpoint = (path: string): string => {
     if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
@@ -160,7 +199,7 @@ export default function DialerPage() {
           callSid: activeCallSid,
           agentPhone: formattedTransferNumber,
           agentName: transferAgentName.trim() || 'Care Agent',
-          organizationId: 'default',
+          organizationId: organizationId || 'default',
         }),
       });
 
@@ -293,21 +332,48 @@ export default function DialerPage() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      placeholder="Agent Name (e.g. Specialist John)"
-                      value={transferAgentName}
-                      onChange={(e) => setTransferAgentName(e.target.value)}
-                      className="input !h-9 text-xs"
-                    />
-                    <input
-                      type="tel"
-                      placeholder="Phone number to transfer to..."
-                      value={transferPhone}
-                      onChange={(e) => setTransferPhone(e.target.value)}
-                      className="input !h-9 text-xs font-mono"
-                    />
+                  <div className="space-y-2">
+                    {agents.length > 0 && (
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-blue-300 mb-1">
+                          Select Registered Agent
+                        </label>
+                        <select
+                          onChange={(e) => {
+                            const ag = agents.find((a) => a.id === e.target.value);
+                            if (ag) {
+                              setTransferAgentName(ag.name);
+                              setTransferPhone(ag.phone_number);
+                            }
+                          }}
+                          className="w-full px-2.5 py-1.5 bg-navy-dark border border-navy-dark-border rounded text-xs text-white focus:outline-none focus:border-accent-primary"
+                        >
+                          <option value="">-- Choose registered agent ({agents.length} available) --</option>
+                          {agents.map((ag) => (
+                            <option key={ag.id} value={ag.id}>
+                              {ag.name} ({ag.phone_number}) — {ag.status}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        placeholder="Agent Name (e.g. John)"
+                        value={transferAgentName}
+                        onChange={(e) => setTransferAgentName(e.target.value)}
+                        className="input !h-9 text-xs"
+                      />
+                      <input
+                        type="tel"
+                        placeholder="Transfer phone number..."
+                        value={transferPhone}
+                        onChange={(e) => setTransferPhone(e.target.value)}
+                        className="input !h-9 text-xs font-mono"
+                      />
+                    </div>
                   </div>
 
                   <Button

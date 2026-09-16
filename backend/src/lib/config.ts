@@ -65,7 +65,10 @@ function loadConfig(): Config {
   const rawConfig = {
     nodeEnv: process.env.NODE_ENV,
     port: process.env.PORT,
-    baseUrl: process.env.BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050',
+    baseUrl:
+      process.env.BASE_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      (process.env.NODE_ENV === 'production' ? 'https://vertext.site' : 'https://vertext.site'),
 
     supabaseUrl: process.env.SUPABASE_URL,
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,

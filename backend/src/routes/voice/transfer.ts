@@ -46,7 +46,15 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
       offset: 0,
     });
 
-    return reply.status(200).send(result);
+    // Exclude calls whose transfer is completed/failed/ended or status is no longer active
+    const terminalTransferStatuses = ['completed', 'failed', 'busy', 'no_answer'];
+    const activeCalls = (result.communications || []).filter((c: any) => {
+      if (c.status === 'completed' || c.status === 'failed' || c.status === 'canceled') return false;
+      if (c.transfer_status && terminalTransferStatuses.includes(c.transfer_status)) return false;
+      return true;
+    });
+
+    return reply.status(200).send({ communications: activeCalls, total: activeCalls.length });
   });
 
   /**
@@ -136,9 +144,15 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
         logger.debug({ err }, 'Note creating agent for transfer');
       }
 
-      // ── 3. Build the transfer TwiML URL ────────────────────────────────
+      // ── 3. Build the transfer TwiML URL with reliable public domain ─────
+      const host = (request.headers['x-forwarded-host'] as string) || request.headers.host;
+      const proto = (request.headers['x-forwarded-proto'] as string) || 'https';
+      const effectiveBaseUrl = (host && !host.includes('localhost') && !host.includes('127.0.0.1'))
+        ? `${proto}://${host}`
+        : (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
+
       const twimlUrl =
-        `${config.baseUrl}/api/v1/voice/transfer-twiml` +
+        `${effectiveBaseUrl}/api/v1/voice/transfer-twiml` +
         `?agentPhone=${encodeURIComponent(targetAgentPhone)}` +
         `&agentId=${encodeURIComponent(agentId)}` +
         `&callSid=${encodeURIComponent(callSid)}`;

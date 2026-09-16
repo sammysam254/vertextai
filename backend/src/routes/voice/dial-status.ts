@@ -72,17 +72,24 @@ export async function handleDialStatus(
       const comm = await getCommunicationByTwilioSid(resolvedCallSid);
       if (comm) {
         const transferStatus = mapDialStatus(dialStatus);
-
-        await updateCommunication(comm.id, {
+        const updates: any = {
           transfer_status: transferStatus,
           duration_seconds: DialCallDuration
             ? parseInt(DialCallDuration, 10) + (comm.duration_seconds || 0)
             : comm.duration_seconds,
-        } as any);
+        };
+
+        const terminalStatuses = ['completed', 'busy', 'no-answer', 'failed', 'canceled'];
+        if (terminalStatuses.includes(dialStatus.toLowerCase())) {
+          updates.status = dialStatus.toLowerCase() === 'completed' ? 'completed' : 'failed';
+          updates.completed_at = new Date().toISOString();
+        }
+
+        await updateCommunication(comm.id, updates as any);
 
         logger.info(
-          { communicationId: comm.id, transferStatus },
-          'Communication transfer status updated'
+          { communicationId: comm.id, transferStatus, status: updates.status },
+          'Communication transfer status and call status updated'
         );
       }
     }

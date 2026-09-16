@@ -64,6 +64,12 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
       logger.info({ to: toNumber, from: fromNumber, agentName, companyName }, 'Outbound call request');
 
       try {
+        const host = (request.headers['x-forwarded-host'] as string) || request.headers.host;
+        const proto = (request.headers['x-forwarded-proto'] as string) || 'https';
+        const effectiveBaseUrl = (host && !host.includes('localhost') && !host.includes('127.0.0.1'))
+          ? `${proto}://${host}`
+          : (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
+
         const queryParams = new URLSearchParams({
           agentName: agentName || 'Customer Specialist',
           companyName: companyName || 'Vertex AI',
@@ -71,13 +77,13 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
           orgId: organizationId || '',
         });
 
-        const twimlUrl = `${config.baseUrl}/api/v1/voice/twiml/outbound?${queryParams.toString()}`;
+        const twimlUrl = `${effectiveBaseUrl}/api/v1/voice/twiml/outbound?${queryParams.toString()}`;
 
         const result = await initiateOutboundCall({
           to: toNumber,
           from: fromNumber,
           url: twimlUrl,
-          statusCallback: `${config.baseUrl}/api/v1/voice/status`,
+          statusCallback: `${effectiveBaseUrl}/api/v1/voice/status`,
         });
 
         // Initialize communication and call state for every call
@@ -218,12 +224,17 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
     const body = (request.body as any) || {};
     const agentName = query.agentName || body.agentName || 'Our specialist';
     const companyName = query.companyName || body.companyName || 'Vertex AI';
-    const turnUrl = `${config.baseUrl}/api/v1/voice/turn`;
+    const host = (request.headers['x-forwarded-host'] as string) || request.headers.host;
+    const proto = (request.headers['x-forwarded-proto'] as string) || 'https';
+    const effectiveBaseUrl = (host && !host.includes('localhost') && !host.includes('127.0.0.1'))
+      ? `${proto}://${host}`
+      : (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
+
+    const turnUrl = `${effectiveBaseUrl}/api/v1/voice/turn`;
 
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna-Neural">Hello! This is ${escapeXml(agentName)} from ${escapeXml(companyName)} calling you. Please hold while we connect our live call.</Say>
-  <Play>${HOLD_MUSIC_URL}</Play>
+  <Say voice="Polly.Joanna-Neural">Hello! This is ${escapeXml(agentName)} from ${escapeXml(companyName)} calling you.</Say>
   <Gather action="${escapeXml(turnUrl)}" input="speech dtmf" method="POST" speechTimeout="auto" timeout="5" numDigits="1">
     <Say voice="Polly.Joanna-Neural">How can we assist you today? You can speak freely or press 0 to speak with a human agent.</Say>
   </Gather>

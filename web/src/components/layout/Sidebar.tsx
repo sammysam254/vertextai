@@ -10,6 +10,7 @@ import {
   Phone,
   MessageSquare,
   Users,
+  UserCheck,
   Smartphone,
   Settings,
   HelpCircle,
@@ -178,6 +179,12 @@ export function Sidebar() {
             icon={Smartphone}
             label="DIALER"
             isActive={isActive('/dashboard/dialer')}
+          />
+          <NavItem
+            href="/dashboard/agents"
+            icon={UserCheck}
+            label="AGENTS"
+            isActive={isActive('/dashboard/agents')}
           />
         </NavGroup>
 
