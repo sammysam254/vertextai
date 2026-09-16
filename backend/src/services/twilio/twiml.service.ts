@@ -104,7 +104,7 @@ export function generateEscalationTwiML(params: {
 <Response>
   <Say voice="${escapeXml(voiceId)}">Please hold while I connect you to an available agent.</Say>
   <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(statusUrl)}">
-    ${escapeXml(normalizedNumber)}
+    <Number>${escapeXml(normalizedNumber)}</Number>
   </Dial>
   <Say voice="${escapeXml(voiceId)}">I'm sorry, all agents are currently busy. Please leave your message after the tone.</Say>
   <Record timeout="10" maxLength="60"/>
@@ -146,7 +146,7 @@ export function generateTransferTwiML(params: {
 <Response>
   <Say voice="${escapeXml(voiceId)}">${escapeXml(transferMessage)}</Say>
   <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(statusUrl)}">
-    ${escapeXml(normalizedNumber)}
+    <Number>${escapeXml(normalizedNumber)}</Number>
   </Dial>
   <Say voice="${escapeXml(voiceId)}">I'm sorry, the agent is not answering right now. Please leave a message after the tone.</Say>
   <Record timeout="10" maxLength="60"/>

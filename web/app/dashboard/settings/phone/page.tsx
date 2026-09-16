@@ -320,8 +320,16 @@ export default function PhoneSettingsPage() {
                 placeholder="+254706499848"
                 className="input text-xs font-mono flex-1 !h-9"
               />
-              <Button type="submit" variant="secondary" size="sm" disabled={savingEscalation} className="h-9 text-xs">
-                {savingEscalation ? 'Saving...' : 'Save Phone'}
+              <Button
+                type="submit"
+                variant="secondary"
+                size="sm"
+                disabled={savingEscalation}
+                isLoading={savingEscalation}
+                loadingText="Saving..."
+                className="h-9 text-xs"
+              >
+                Save Phone
               </Button>
             </form>
             {escalationSaved && (
@@ -380,9 +388,11 @@ export default function PhoneSettingsPage() {
               variant="primary"
               className="w-full h-10 text-xs bg-accent-primary font-semibold"
               disabled={isSearching}
+              isLoading={isSearching}
+              loadingText="Searching Twilio Live..."
             >
               <Search className="h-4 w-4 mr-1.5" />
-              {isSearching ? 'Searching Twilio Live...' : 'Search Available Phone Numbers'}
+              Search Available Phone Numbers
             </Button>
           </form>
 
@@ -421,9 +431,11 @@ export default function PhoneSettingsPage() {
                       size="sm"
                       onClick={() => handleProvisionNumber(num.phoneNumber)}
                       disabled={provisioningNumber !== null}
+                      isLoading={provisioningNumber === num.phoneNumber}
+                      loadingText="Purchasing..."
                       className="h-8 px-3 bg-accent-success hover:bg-accent-success/90 text-white font-semibold text-xs"
                     >
-                      {provisioningNumber === num.phoneNumber ? 'Purchasing...' : 'Provision Number'}
+                      Provision Number
                     </Button>
                   </div>
                 ))}

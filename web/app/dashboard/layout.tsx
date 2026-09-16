@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { OrganizationProvider } from '@/lib/context/OrganizationContext';
 import { IncomingCallBar } from '@/components/calls/IncomingCallBar';
+import { RouteProgressBar } from '@/components/layout/RouteProgressBar';
 
 export default async function DashboardLayout({
   children,
@@ -25,7 +26,7 @@ export default async function DashboardLayout({
   try {
     const { data: mem } = await supabase
       .from('organization_members')
-      .select('organization_id, role, organizations ( id, name, metadata )')
+      .select('organization_id, role, organizations ( id, name, metadata, twilio_phone_number )')
       .eq('user_id', user.id)
       .limit(1)
       .maybeSingle();
@@ -38,11 +39,16 @@ export default async function DashboardLayout({
         hash = (hash * 31 + orgId.charCodeAt(i)) >>> 0;
       }
       const code = org?.metadata?.merchant_code || String(100000 + (hash % 900000));
+      const phone = org?.twilio_phone_number || '+12513571708';
+      const isDedicated = Boolean(phone !== '+12513571708' || org?.metadata?.dedicated_number);
+
       initialOrg = {
         organizationId: orgId,
         merchantCode: code,
         organizationName: org?.name || 'My Call Center',
         role: mem.role || 'owner',
+        twilioPhoneNumber: phone,
+        isDedicatedNumber: isDedicated,
       };
     }
   } catch (e) {
@@ -51,6 +57,7 @@ export default async function DashboardLayout({
 
   return (
     <OrganizationProvider initialOrg={initialOrg}>
+      <RouteProgressBar />
       <div className="flex h-screen overflow-hidden bg-navy-dark relative">
         {/* Global WebRTC Incoming Call Bar */}
         <IncomingCallBar />
@@ -64,7 +71,7 @@ export default async function DashboardLayout({
           <DashboardHeader />
 
           {/* Page Content */}
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 animate-fadeIn">
             {children}
           </main>
         </div>

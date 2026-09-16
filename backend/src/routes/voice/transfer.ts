@@ -14,7 +14,7 @@ import {
   listOrganizationAgents,
   findOrCreateAgent,
 } from '@/services/database';
-import { updateCall, getCallDetails } from '@/services/twilio/client.service';
+import { updateCall, getCallDetails, createTwilioClient } from '@/services/twilio/client.service';
 import { generateTransferTwiML } from '@/services/twilio/twiml.service';
 import { normalizePhoneNumber } from '@/lib/phone';
 
@@ -164,14 +164,66 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
         `&agentId=${encodeURIComponent(agentId)}` +
         `&callSid=${encodeURIComponent(callSid)}`;
 
-      // ── 4. Redirect the live call ───────────────────────────────────────
+      // ── 4. Determine and redirect the customer leg ───────────────────────
+      let targetCallSid = callSid;
+      let browserLegSid: string | null = null;
+
       try {
+        const client = createTwilioClient();
+        const call = await client.calls(callSid).fetch();
+
+        if (call.parentCallSid) {
+          // If callSid has a parent, callSid is a child leg (e.g. browser WebRTC or forwarded leg)
+          // The parent is the customer who must be transferred!
+          targetCallSid = call.parentCallSid;
+          browserLegSid = callSid;
+        } else {
+          // Check if there is an active child leg (customer dialed from browser outbound via <Dial>)
+          const childCalls = await client.calls.list({
+            parentCallSid: callSid,
+            limit: 5,
+          });
+          const activeChild = childCalls.find((c) =>
+            ['in-progress', 'ringing', 'queued'].includes(c.status)
+          );
+          if (activeChild) {
+            targetCallSid = activeChild.sid;
+            browserLegSid = callSid;
+          }
+        }
+      } catch (checkErr) {
+        logger.debug({ checkErr, callSid }, 'Inspecting call leg hierarchy for transfer');
+      }
+
+      logger.info(
+        { callSid, targetCallSid, browserLegSid, targetAgentPhone },
+        'Redirecting customer call leg for transfer'
+      );
+
+      const customerTwimlUrl =
+        `${effectiveBaseUrl}/api/v1/voice/transfer-twiml` +
+        `?agentPhone=${encodeURIComponent(targetAgentPhone)}` +
+        `&agentId=${encodeURIComponent(agentId)}` +
+        `&callSid=${encodeURIComponent(targetCallSid)}`;
+
+      try {
+        // Redirect the customer leg to the transfer TwiML
         await updateCall({
-          callSid,
-          url: twimlUrl,
+          callSid: targetCallSid,
+          url: customerTwimlUrl,
         });
+
+        // Cleanly disconnect the transferring browser agent leg so their softphone frees up
+        if (browserLegSid && browserLegSid !== targetCallSid) {
+          try {
+            const client = createTwilioClient();
+            await client.calls(browserLegSid).update({ status: 'completed' });
+          } catch (e) {
+            logger.debug({ e }, 'Note completing browser leg after transfer');
+          }
+        }
       } catch (err: any) {
-        logger.error({ err, callSid }, 'Twilio updateCall failed');
+        logger.error({ err, callSid, targetCallSid }, 'Twilio updateCall failed during transfer');
         return reply.status(502).send({
           error: 'Bad Gateway',
           message: 'Failed to redirect call via Twilio: ' + (err?.message || ''),
@@ -181,7 +233,9 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
 
       // ── 5. Mark communication record as transfer-pending ───────────────
       try {
-        const comm = await getCommunicationByTwilioSid(callSid);
+        const comm =
+          (await getCommunicationByTwilioSid(targetCallSid)) ||
+          (await getCommunicationByTwilioSid(callSid));
         if (comm) {
           await updateCommunication(comm.id, {
             transferred_to_agent_id: agentId,
@@ -197,7 +251,7 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
         logger.warn({ err, callSid }, 'Could not update communication record');
       }
 
-      logger.info({ callSid, agentPhone, agentId }, 'Transfer initiated');
+      logger.info({ callSid, targetCallSid, agentPhone, agentId }, 'Transfer initiated successfully');
 
       return reply.status(200).send({
         success: true,
@@ -220,7 +274,13 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
     const agentId = query.agentId || body.agentId || '';
     const callSid = query.callSid || body.callSid || '';
 
-    const dialStatusUrl = `${config.baseUrl}/api/v1/voice/dial-status`;
+    const host = (request.headers['x-forwarded-host'] as string) || request.headers.host;
+    const proto = (request.headers['x-forwarded-proto'] as string) || 'https';
+    const effectiveBaseUrl = (host && !host.includes('localhost') && !host.includes('127.0.0.1'))
+      ? `${proto}://${host}`
+      : (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
+
+    const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status`;
     const voiceId = 'Polly.Joanna-Neural';
     const normalizedPhone = normalizePhoneNumber(agentPhone);
     const callerId = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');

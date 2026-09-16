@@ -39,14 +39,24 @@ function NavItem({ href, icon: Icon, label, badge, isActive, onClick }: NavItemP
       href={href as any}
       onClick={onClick}
       className={cn(
-        'nav-item',
-        isActive && 'nav-item-active'
+        'nav-item group relative overflow-hidden transition-all duration-200 active:scale-[0.98]',
+        isActive
+          ? 'nav-item-active font-semibold text-white bg-accent-primary/20 border-l-2 border-chart-cyan'
+          : 'text-slate-blue-300 hover:text-white hover:bg-navy-dark-elevated'
       )}
     >
-      <Icon className="h-4 w-4 flex-shrink-0" />
-      <span className="flex-1">{label}</span>
+      <Icon
+        className={cn(
+          'h-4 w-4 flex-shrink-0 transition-transform duration-200 group-hover:scale-110',
+          isActive ? 'text-chart-cyan' : 'text-slate-blue-400 group-hover:text-chart-cyan'
+        )}
+      />
+      <span className="flex-1 text-xs sm:text-sm">{label}</span>
+      {isActive && (
+        <span className="w-1.5 h-1.5 rounded-full bg-chart-cyan shadow-[0_0_8px_#00D4FF] mr-1" />
+      )}
       {badge && (
-        <Badge variant="default" className="ml-auto">
+        <Badge variant="default" className="ml-auto text-[10px] px-1.5 py-0.5">
           {badge}
         </Badge>
       )}

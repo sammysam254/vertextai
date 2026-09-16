@@ -659,10 +659,12 @@ export default function DialerPage() {
                     size="sm"
                     onClick={handleTransfer}
                     disabled={!transferPhone.trim() || isTransferring}
+                    isLoading={isTransferring}
+                    loadingText="Placing Customer on Hold & Transferring..."
                     className="w-full bg-accent-primary/20 hover:bg-accent-primary/30 text-white border-accent-primary/40 text-xs py-2"
                   >
                     <ArrowRightLeft className="h-3 w-3 mr-1.5" />
-                    {isTransferring ? 'Transferring...' : 'Transfer Call'}
+                    Transfer Call
                   </Button>
 
                   {transferMessage && (
