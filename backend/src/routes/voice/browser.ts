@@ -115,11 +115,22 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(200).type('text/xml').send(twiml);
     }
 
+    let orgId = body.organizationId || query.organizationId;
+    if (!orgId && from && typeof from === 'string' && from.includes('merchant_')) {
+      const match = from.match(/merchant_([0-9a-fA-F-]+)/);
+      if (match && match[1]) {
+        orgId = match[1];
+      }
+    }
+    if (!orgId || orgId.length < 10) {
+      orgId = '00000000-0000-0000-0000-000000000000';
+    }
+
     // Save outbound call to database
     try {
-      const contact = await findOrCreateContact('00000000-0000-0000-0000-000000000000', normalizedTo);
+      const contact = await findOrCreateContact(orgId, normalizedTo);
       const comm = await createCommunication({
-        organizationId: '00000000-0000-0000-0000-000000000000',
+        organizationId: orgId,
         contactId: contact.id,
         type: 'voice_out',
         twilioSid: callSid,
@@ -127,7 +138,7 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
         toNumber: normalizedTo,
         status: 'in-progress',
       });
-      await initializeCallState(callSid, '00000000-0000-0000-0000-000000000000', contact.id, comm.id);
+      await initializeCallState(callSid, orgId, contact.id, comm.id);
       await setCallLatestStatus(callSid, 'in-progress');
     } catch (e: any) {
       logger.debug({ e: e?.message }, 'Note saving browser call communication');

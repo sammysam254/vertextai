@@ -29,11 +29,14 @@ interface AgentItem {
   created_at: string;
 }
 
+import { useOrganization } from '@/lib/context/OrganizationContext';
+
 export default function AgentsPage() {
+  const { organizationId: contextOrgId, merchantCode } = useOrganization();
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(contextOrgId);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,37 +50,11 @@ export default function AgentsPage() {
 
   const supabase = createClient();
 
-  // Load Organization ID
   useEffect(() => {
-    async function loadOrg() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: mem } = await supabase
-            .from('organization_members')
-            .select('organization_id')
-            .eq('user_id', user.id)
-            .limit(1)
-            .maybeSingle();
-          if (mem?.organization_id) {
-            setOrganizationId(mem.organization_id);
-            return;
-          }
-        }
-        const { data: firstOrg } = await supabase
-          .from('organizations')
-          .select('id')
-          .limit(1)
-          .maybeSingle();
-        if (firstOrg?.id) {
-          setOrganizationId(firstOrg.id);
-        }
-      } catch (e) {
-        console.error('Error resolving organization:', e);
-      }
+    if (contextOrgId) {
+      setOrganizationId(contextOrgId);
     }
-    loadOrg();
-  }, [supabase]);
+  }, [contextOrgId]);
 
   // Fetch Agents
   const fetchAgents = useCallback(async () => {

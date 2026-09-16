@@ -121,4 +121,90 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
   );
+
+  // POST /api/v1/auth/resolve - Resolve or auto-provision dedicated organization for user
+  fastify.post<{
+    Body: {
+      userId: string;
+      email?: string;
+      name?: string;
+    };
+  }>('/resolve', async (request, reply) => {
+    const { userId, email, name } = request.body || {};
+    if (!userId) {
+      return reply.status(400).send({ error: 'userId is required' });
+    }
+
+    try {
+      // Check existing membership
+      const { data: member } = await supabase
+        .from('organization_members')
+        .select('organization_id, role, organizations ( id, name, metadata, twilio_phone_number )')
+        .eq('user_id', userId)
+        .limit(1)
+        .maybeSingle();
+
+      if (member && member.organization_id) {
+        const org = (member as any).organizations;
+        const orgId = member.organization_id;
+        let hash = 0;
+        for (let i = 0; i < orgId.length; i++) {
+          hash = (hash * 31 + orgId.charCodeAt(i)) >>> 0;
+        }
+        const merchantCode = org?.metadata?.merchant_code || String(100000 + (hash % 900000));
+
+        return reply.status(200).send({
+          organizationId: orgId,
+          organizationName: org?.name || 'My Call Center',
+          merchantCode,
+          role: member.role || 'owner',
+        });
+      }
+
+      // Auto-provision personal organization for this user
+      const orgName = name || (email ? `${email.split('@')[0]}'s Call Center` : 'My Call Center');
+      
+      // Compute deterministic 6-digit code from userId
+      let hash = 0;
+      for (let i = 0; i < userId.length; i++) {
+        hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
+      }
+      const newMerchantCode = String(100000 + (hash % 900000));
+
+      const { data: newOrg, error: orgErr } = await supabase
+        .from('organizations')
+        .insert({
+          name: orgName,
+          twilio_phone_number: '+12513571708',
+          escalation_phone_number: '+254706499848',
+          metadata: { merchant_code: newMerchantCode, owner_user_id: userId },
+        })
+        .select()
+        .single();
+
+      if (orgErr || !newOrg) {
+        logger.error({ orgErr, userId }, 'Failed to auto-create organization');
+        return reply.status(500).send({ error: 'Failed to auto-provision organization' });
+      }
+
+      // Create membership
+      await supabase.from('organization_members').insert({
+        organization_id: newOrg.id,
+        user_id: userId,
+        role: 'owner',
+      });
+
+      logger.info({ orgId: newOrg.id, userId, merchantCode: newMerchantCode }, 'Auto-provisioned merchant organization');
+
+      return reply.status(201).send({
+        organizationId: newOrg.id,
+        organizationName: newOrg.name,
+        merchantCode: newMerchantCode,
+        role: 'owner',
+      });
+    } catch (err: any) {
+      logger.error({ err, userId }, 'Error in /api/v1/auth/resolve');
+      return reply.status(500).send({ error: err.message || 'Internal server error' });
+    }
+  });
 };

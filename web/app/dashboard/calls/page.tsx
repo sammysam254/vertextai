@@ -18,7 +18,6 @@ export default async function CallsPage() {
   let calls: any[] = [];
 
   if (user) {
-    // Resolve org membership
     const { data: membership } = await supabase
       .from('organization_members')
       .select('organization_id')
@@ -26,17 +25,36 @@ export default async function CallsPage() {
       .limit(1)
       .maybeSingle();
 
-    organizationId = membership?.organization_id ?? null;
-  }
+    if (membership?.organization_id) {
+      organizationId = membership.organization_id;
+    } else {
+      let hash = 0;
+      for (let i = 0; i < user.id.length; i++) {
+        hash = (hash * 31 + user.id.charCodeAt(i)) >>> 0;
+      }
+      const merchantCode = String(100000 + (hash % 900000));
+      const orgName = `${user.user_metadata?.full_name || user.email?.split('@')[0] || 'Merchant'}'s Call Center`;
 
-  // Fallback to first organization if membership isn't linked yet
-  if (!organizationId) {
-    const { data: firstOrg } = await supabase
-      .from('organizations')
-      .select('id')
-      .limit(1)
-      .maybeSingle();
-    organizationId = firstOrg?.id ?? null;
+      const { data: newOrg } = await supabase
+        .from('organizations')
+        .insert({
+          name: orgName,
+          twilio_phone_number: '+12513571708',
+          escalation_phone_number: '+254706499848',
+          metadata: { merchant_code: merchantCode, owner_user_id: user.id },
+        })
+        .select()
+        .single();
+
+      if (newOrg) {
+        organizationId = newOrg.id;
+        await supabase.from('organization_members').insert({
+          organization_id: newOrg.id,
+          user_id: user.id,
+          role: 'owner',
+        });
+      }
+    }
   }
 
   if (organizationId) {

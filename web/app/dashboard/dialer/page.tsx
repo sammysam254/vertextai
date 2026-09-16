@@ -21,18 +21,24 @@ import {
 } from 'lucide-react';
 import { formatPhoneNumber, formatDuration } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { useOrganization } from '@/lib/context/OrganizationContext';
+import { useSearchParams } from 'next/navigation';
 import { useAgents } from '@/lib/hooks/useCalls';
 
 export default function DialerPage() {
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const { organizationId: contextOrgId, organizationName, merchantCode } = useOrganization();
+  const searchParams = useSearchParams();
+  const prefillNumber = searchParams?.get('number') || '';
+
+  const [phoneNumber, setPhoneNumber] = useState(prefillNumber);
   const [agentName, setAgentName] = useState('Support Agent');
-  const [companyName, setCompanyName] = useState('Vertex AI');
+  const [companyName, setCompanyName] = useState(organizationName || 'My Store');
   const [isCallActive, setIsCallActive] = useState(false);
   const [activeCallSid, setActiveCallSid] = useState<string>('');
   const [callStatus, setCallStatus] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [organizationId, setOrganizationId] = useState<string | null>(contextOrgId);
 
   // WebRTC Live Browser Audio State
   const [device, setDevice] = useState<any>(null);
@@ -59,39 +65,22 @@ export default function DialerPage() {
     return path;
   };
 
-  // Resolve organization ID for agents
   useEffect(() => {
-    async function loadOrg() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: mem } = await supabase
-            .from('organization_members')
-            .select('organization_id')
-            .eq('user_id', user.id)
-            .limit(1)
-            .maybeSingle();
-          if (mem?.organization_id) {
-            setOrganizationId(mem.organization_id);
-            return;
-          }
-        }
-        const { data: firstOrg } = await supabase
-          .from('organizations')
-          .select('id')
-          .limit(1)
-          .maybeSingle();
-        if (firstOrg?.id) {
-          setOrganizationId(firstOrg.id);
-        }
-      } catch (e) {
-        console.error('Error resolving organization:', e);
-      }
+    if (contextOrgId) {
+      setOrganizationId(contextOrgId);
     }
-    loadOrg();
-  }, [supabase]);
+    if (organizationName) {
+      setCompanyName(organizationName);
+    }
+  }, [contextOrgId, organizationName]);
 
-  const { agents } = useAgents(organizationId, true);
+  useEffect(() => {
+    if (prefillNumber) {
+      setPhoneNumber(prefillNumber);
+    }
+  }, [prefillNumber]);
+
+  const { agents } = useAgents(organizationId || contextOrgId, true);
 
   // Initialize Twilio WebRTC Voice Device for in-browser live calling
   useEffect(() => {
@@ -101,8 +90,10 @@ export default function DialerPage() {
       if (typeof window === 'undefined') return;
 
       try {
+        const targetOrg = organizationId || contextOrgId;
+        const clientIdentity = targetOrg ? `merchant_${targetOrg}` : `agent_${Math.random().toString(36).substring(2, 8)}`;
         const tokenEndpoint = getApiEndpoint(
-          `/api/v1/voice/token?identity=${encodeURIComponent('agent_' + Math.random().toString(36).substring(2, 8))}`
+          `/api/v1/voice/token?identity=${encodeURIComponent(clientIdentity)}`
         );
         const res = await fetch(tokenEndpoint);
         if (!res.ok) {
@@ -627,7 +618,7 @@ export default function DialerPage() {
                         </label>
                         <select
                           onChange={(e) => {
-                            const ag = agents.find((a) => a.id === e.target.value);
+                            const ag = agents.find((a: any) => a.id === e.target.value);
                             if (ag) {
                               setTransferAgentName(ag.name);
                               setTransferPhone(ag.phone_number);
@@ -636,7 +627,7 @@ export default function DialerPage() {
                           className="w-full px-2.5 py-1.5 bg-navy-dark border border-navy-dark-border rounded text-xs text-white focus:outline-none focus:border-accent-primary"
                         >
                           <option value="">-- Choose agent ({agents.length} available) --</option>
-                          {agents.map((ag) => (
+                          {agents.map((ag: any) => (
                             <option key={ag.id} value={ag.id}>
                               {ag.name} ({ag.phone_number}) — {ag.status}
                             </option>

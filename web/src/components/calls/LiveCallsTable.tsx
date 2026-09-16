@@ -23,7 +23,7 @@ interface LiveCallsTableProps {
 }
 
 export function LiveCallsTable({ organizationId }: LiveCallsTableProps) {
-  const { calls, loading } = useLiveCalls(organizationId, 5000);
+  const { calls, loading } = useLiveCalls(organizationId, 2000);
 
   const [transferTarget, setTransferTarget] = useState<LiveCall | null>(null);
 

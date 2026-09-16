@@ -56,10 +56,10 @@ export async function handleIncomingCall(
     const merchantRouteUrl = `${config.baseUrl}/api/v1/voice/merchant-route`;
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Gather action="${merchantRouteUrl}" method="POST" numDigits="6" timeout="7" finishOnKey="#">
-    <Say voice="Polly.Joanna-Neural">Thank you for calling Vertex AI Call Center. If you have a 6-digit merchant ID, please enter it now on your keypad. Or press 1 for customer care.</Say>
+  <Gather action="${merchantRouteUrl}" method="POST" numDigits="6" timeout="5" finishOnKey="#">
+    <Say voice="Polly.Joanna-Neural">Please enter the 6-digit merchant code, or press 1 for support.</Say>
   </Gather>
-  <Say voice="Polly.Joanna-Neural">Connecting you to customer care. Please hold.</Say>
+  <Say voice="Polly.Joanna-Neural">Connecting to support. Please hold.</Say>
   <Redirect method="POST">${merchantRouteUrl}?Digits=default</Redirect>
 </Response>`;
 
@@ -71,11 +71,11 @@ export async function handleIncomingCall(
     const dialStatusUrl = `${config.baseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(CallSid || '')}`;
     const fallbackTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna-Neural">Welcome. Please hold while we connect you to an agent.</Say>
-  <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
+  <Say voice="Polly.Joanna-Neural">Connecting to support. Please hold.</Say>
+  <Dial timeout="25" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
     +254706499848
   </Dial>
-  <Say voice="Polly.Joanna-Neural">All our agents are currently assisting other callers. Please leave a message after the beep.</Say>
+  <Say voice="Polly.Joanna-Neural">All representatives are busy. Please leave a message after the beep.</Say>
   <Record timeout="10" maxLength="60"/>
   <Hangup/>
 </Response>`;
@@ -196,13 +196,15 @@ async function routeCallToOrganization(
       'Ringing merchant phone directly'
     );
 
+    const clientIdentity = `merchant_${org.id}`;
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="${escapeXml(voiceId)}">Connecting you to ${escapeXml(org.name)}. Please hold while we dial customer care.</Say>
-  <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
-    ${escapeXml(merchantPhone)}
+  <Say voice="${escapeXml(voiceId)}">Connecting you to ${escapeXml(org.name)}. Please hold.</Say>
+  <Dial timeout="25" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
+    <Client>${escapeXml(clientIdentity)}</Client>
+    <Number>${escapeXml(merchantPhone)}</Number>
   </Dial>
-  <Say voice="${escapeXml(voiceId)}">I am sorry, the merchant is currently unavailable. Please leave a message after the tone.</Say>
+  <Say voice="${escapeXml(voiceId)}">The merchant is currently unavailable. Please leave a message after the tone.</Say>
   <Record timeout="10" maxLength="60"/>
   <Hangup/>
 </Response>`;

@@ -10,23 +10,55 @@ export default async function DashboardOverviewPage() {
   const { data: { user } } = await supabase.auth.getUser();
 
   let organizationId: string | null = null;
+  let organizationName: string = 'My Call Center';
+  let merchantCode: string = '';
+
   if (user) {
     const { data: mem } = await supabase
       .from('organization_members')
-      .select('organization_id')
+      .select('organization_id, organizations ( id, name, metadata )')
       .eq('user_id', user.id)
       .limit(1)
       .maybeSingle();
-    organizationId = mem?.organization_id ?? null;
-  }
 
-  if (!organizationId) {
-    const { data: firstOrg } = await supabase
-      .from('organizations')
-      .select('id')
-      .limit(1)
-      .maybeSingle();
-    organizationId = firstOrg?.id ?? null;
+    if (mem && mem.organization_id) {
+      const orgId = mem.organization_id;
+      organizationId = orgId;
+      const org = (mem as any).organizations;
+      organizationName = org?.name || 'My Call Center';
+      let hash = 0;
+      for (let i = 0; i < orgId.length; i++) {
+        hash = (hash * 31 + orgId.charCodeAt(i)) >>> 0;
+      }
+      merchantCode = org?.metadata?.merchant_code || String(100000 + (hash % 900000));
+    } else {
+      let hash = 0;
+      for (let i = 0; i < user.id.length; i++) {
+        hash = (hash * 31 + user.id.charCodeAt(i)) >>> 0;
+      }
+      merchantCode = String(100000 + (hash % 900000));
+      organizationName = `${user.user_metadata?.full_name || user.email?.split('@')[0] || 'Merchant'}'s Call Center`;
+
+      const { data: newOrg } = await supabase
+        .from('organizations')
+        .insert({
+          name: organizationName,
+          twilio_phone_number: '+12513571708',
+          escalation_phone_number: '+254706499848',
+          metadata: { merchant_code: merchantCode, owner_user_id: user.id },
+        })
+        .select()
+        .single();
+
+      if (newOrg) {
+        organizationId = newOrg.id;
+        await supabase.from('organization_members').insert({
+          organization_id: newOrg.id,
+          user_id: user.id,
+          role: 'owner',
+        });
+      }
+    }
   }
 
   let totalCalls = 0;
@@ -41,7 +73,7 @@ export default async function DashboardOverviewPage() {
       supabase.from('agents').select('*', { count: 'exact', head: true }).eq('organization_id', organizationId),
       supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('organization_id', organizationId),
       supabase.from('communications').select('*', { count: 'exact', head: true }).eq('organization_id', organizationId).in('type', ['sms_in', 'sms_out']),
-      supabase.from('communications').select('id, type, from_number, to_number, status, duration_seconds, created_at, contacts(name)').eq('organization_id', organizationId).in('type', ['voice_in', 'voice_out']).order('created_at', { ascending: false }).limit(5)
+      supabase.from('communications').select('id, type, from_number, to_number, status, duration_seconds, created_at, contacts(name)').eq('organization_id', organizationId).in('type', ['voice_in', 'voice_out']).order('created_at', { ascending: false }).limit(6)
     ]);
 
     totalCalls = callsRes.count ?? 0;
@@ -75,6 +107,41 @@ export default async function DashboardOverviewPage() {
           >
             <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             Send SMS
+          </Link>
+        </div>
+      </div>
+
+      {/* Merchant Routing ID Banner */}
+      <div className="bg-gradient-to-r from-accent-primary/20 via-navy-dark-panel to-navy-dark-panel border border-accent-primary/40 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-xl bg-accent-primary/20 border border-accent-primary/40 flex items-center justify-center text-accent-primary shrink-0">
+            <ShieldCheck className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase font-semibold tracking-wider text-accent-primary">
+                Your Dedicated Merchant Routing Line
+              </span>
+              <Badge variant="resolved">Active</Badge>
+            </div>
+            <p className="text-sm text-slate-blue-300 mt-0.5">
+              Callers dial <span className="font-mono text-white font-semibold">+1 (251) 357-1708</span> and enter your merchant code:
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          <div className="px-4 py-2 bg-navy-dark border border-accent-primary/50 rounded-lg text-center">
+            <span className="text-[10px] text-slate-blue-400 uppercase tracking-wider block">Merchant Code</span>
+            <span className="text-xl sm:text-2xl font-mono font-extrabold text-chart-cyan tracking-wider">
+              {merchantCode || '100001'}
+            </span>
+          </div>
+          <Link
+            href="/dashboard/settings/phone"
+            className="text-xs text-accent-primary hover:underline self-center"
+          >
+            Configure &rarr;
           </Link>
         </div>
       </div>

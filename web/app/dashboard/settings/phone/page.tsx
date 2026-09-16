@@ -7,8 +7,11 @@ import { Badge } from '@/components/ui/Badge';
 import { Phone, Hash, Globe, ShieldCheck, Check, Copy, ExternalLink, Search, Sparkles } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
+import { useOrganization } from '@/lib/context/OrganizationContext';
+
 export default function PhoneSettingsPage() {
-  const [merchantCode, setMerchantCode] = useState('104829');
+  const { merchantCode: contextCode, organizationId, organizationName } = useOrganization();
+  const [merchantCode, setMerchantCode] = useState(contextCode || '100001');
   const [copied, setCopied] = useState(false);
   const [searchCountry, setSearchCountry] = useState('US');
   const [areaCode, setAreaCode] = useState('');
@@ -18,30 +21,10 @@ export default function PhoneSettingsPage() {
   const twilioPhone = process.env.NEXT_PUBLIC_TWILIO_PHONE || '+12513571708';
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (data.user) {
-        try {
-          const { data: member } = await supabase
-            .from('organization_members')
-            .select('organization_id')
-            .eq('user_id', data.user.id)
-            .limit(1)
-            .single();
-
-          const targetId = member?.organization_id || data.user.id;
-          let hash = 0;
-          for (let i = 0; i < targetId.length; i++) {
-            hash = (hash * 31 + targetId.charCodeAt(i)) >>> 0;
-          }
-          const code = String(100000 + (hash % 900000));
-          setMerchantCode(code);
-        } catch {
-          setMerchantCode('104829');
-        }
-      }
-    });
-  }, []);
+    if (contextCode) {
+      setMerchantCode(contextCode);
+    }
+  }, [contextCode]);
 
   const copyCode = () => {
     navigator.clipboard.writeText(merchantCode);
