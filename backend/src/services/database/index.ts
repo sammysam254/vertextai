@@ -8,6 +8,8 @@ export {
   getOrganizationById,
   updateOrganization,
   listOrganizations,
+  getMerchantCode,
+  getOrganizationByMerchantCode,
 } from './organization.service';
 
 // Contact services

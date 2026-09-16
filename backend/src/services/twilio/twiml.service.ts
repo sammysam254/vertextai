@@ -75,11 +75,13 @@ export function generateTurnTwiML(params: {
   return twiml;
 }
 
+const HOLD_MUSIC = 'http://com.twilio.sounds.music.s3.amazonaws.com/ClockworkWaltz.mp3';
+
 /**
  * Generate escalation TwiML (transfer to human)
  */
 export function generateEscalationTwiML(params: {
-  escalationNumber: string;
+  escalationNumber?: string;
   voiceId: string;
   statusUrl: string;
 }): string {
@@ -87,13 +89,26 @@ export function generateEscalationTwiML(params: {
 
   logger.info({ escalationNumber }, 'Generating escalation TwiML');
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
+  if (escalationNumber && escalationNumber.trim().length > 3) {
+    return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="${escapeXml(voiceId)}">Please hold while I connect you to an available agent.</Say>
+  <Play>${HOLD_MUSIC}</Play>
   <Dial timeout="30" action="${escapeXml(statusUrl)}">
     ${escapeXml(escalationNumber)}
   </Dial>
-  <Say voice="${escapeXml(voiceId)}">I'm sorry, all agents are currently busy. Please call back later.</Say>
+  <Say voice="${escapeXml(voiceId)}">I'm sorry, all agents are currently busy. Please leave your message after the tone.</Say>
+  <Record timeout="10" maxLength="60"/>
+  <Hangup/>
+</Response>`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="${escapeXml(voiceId)}">Please enjoy this music while we connect you to customer care.</Say>
+  <Play>${HOLD_MUSIC}</Play>
+  <Say voice="${escapeXml(voiceId)}">Please leave your name and contact number after the beep, and an agent will call you back shortly.</Say>
+  <Record timeout="10" maxLength="60"/>
   <Hangup/>
 </Response>`;
 }
@@ -119,10 +134,12 @@ export function generateTransferTwiML(params: {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="${escapeXml(voiceId)}">${escapeXml(transferMessage)}</Say>
+  <Play>${HOLD_MUSIC}</Play>
   <Dial timeout="30" action="${escapeXml(statusUrl)}">
     ${escapeXml(agentNumber)}
   </Dial>
-  <Say voice="${escapeXml(voiceId)}">I'm sorry, the agent is not available. Please call back later.</Say>
+  <Say voice="${escapeXml(voiceId)}">I'm sorry, the agent is not available right now. Please leave a message.</Say>
+  <Record timeout="10" maxLength="60"/>
   <Hangup/>
 </Response>`;
 }

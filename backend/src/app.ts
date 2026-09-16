@@ -6,6 +6,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import websocket from '@fastify/websocket';
+import querystring from 'node:querystring';
 import { config } from './lib/config';
 import { redis, checkRedisHealth, getCacheMetrics } from './lib/redis';
 import { checkDatabaseHealth } from './lib/supabase';
@@ -20,6 +21,20 @@ export const app = Fastify({
   disableRequestLogging: false,
   requestIdHeader: 'x-request-id',
 });
+
+// Support application/x-www-form-urlencoded for Twilio webhooks
+app.addContentTypeParser(
+  'application/x-www-form-urlencoded',
+  { parseAs: 'string' },
+  (_req, body, defaultDone) => {
+    try {
+      const parsed = querystring.parse((body as string) || '');
+      defaultDone(null, parsed);
+    } catch (err) {
+      defaultDone(err as Error, undefined);
+    }
+  }
+);
 
 // ==============================================
 // Plugins

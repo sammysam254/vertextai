@@ -186,6 +186,15 @@ export function Sidebar() {
         <NavGroup label="CONFIGURATION">
           <ExpandableNavItem icon={Settings} label="SETTINGS">
             <Link
+              href={'/dashboard/settings/phone' as any}
+              className={cn(
+                'block px-3 py-2 text-sm text-slate-blue-300 hover:text-white rounded-md hover:bg-navy-dark-elevated transition-colors',
+                isActive('/dashboard/settings/phone') && 'text-accent-primary'
+              )}
+            >
+              Phone &amp; Merchant Routing
+            </Link>
+            <Link
               href="/dashboard/settings/ai"
               className={cn(
                 'block px-3 py-2 text-sm text-slate-blue-300 hover:text-white rounded-md hover:bg-navy-dark-elevated transition-colors',

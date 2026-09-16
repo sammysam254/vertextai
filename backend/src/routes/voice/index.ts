@@ -4,7 +4,7 @@
 
 import { FastifyInstance } from 'fastify';
 import { twilioSignatureHook } from '@/middleware';
-import { handleIncomingCall } from './incoming';
+import { handleIncomingCall, handleMerchantRoute } from './incoming';
 import { handleConversationTurn } from './turn';
 import { handleCallStatus } from './status';
 import { handleDialStatus } from './dial-status';
@@ -24,6 +24,10 @@ export async function voiceRoutes(app: FastifyInstance) {
 
     // Inbound call webhook
     webhookScope.post('/incoming', handleIncomingCall);
+
+    // 6-Digit Merchant Code Routing
+    webhookScope.post('/merchant-route', handleMerchantRoute);
+    webhookScope.get('/merchant-route', handleMerchantRoute);
 
     // Conversation turn handler
     webhookScope.post('/turn', handleConversationTurn);

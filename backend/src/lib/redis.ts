@@ -65,10 +65,17 @@ const getRedisConfig = (): RedisOptions => {
   };
 };
 
+// In-memory fallback cache for when Redis is disabled or offline
+const memoryCache = new Map<string, { val: string; expiresAt?: number }>();
+
+const isRedisDisabled = process.env.REDIS_ENABLED === 'false';
+
 // Create Redis client instance
-export const redis = config.redisUrl
-  ? new Redis(config.redisUrl, getRedisConfig())
-  : new Redis(getRedisConfig());
+export const redis = isRedisDisabled
+  ? (new Redis({ lazyConnect: true, enableOfflineQueue: false }) as any)
+  : config.redisUrl
+    ? new Redis(config.redisUrl, getRedisConfig())
+    : new Redis(getRedisConfig());
 
 // Connection event handlers
 redis.on('connect', () => {
@@ -79,7 +86,7 @@ redis.on('ready', () => {
   logger.info('✓ Redis ready to accept commands');
 });
 
-redis.on('error', (err) => {
+redis.on('error', (err: any) => {
   logger.error({ err }, '✗ Redis connection error');
   // Don't throw - allow graceful degradation
 });
@@ -180,19 +187,45 @@ export const CacheKeys = {
  * Get cached value with JSON parsing
  */
 export async function getCached<T>(key: string): Promise<T | null> {
+  // Check memory cache first if Redis is disabled
+  if (isRedisDisabled) {
+    const item = memoryCache.get(key);
+    if (item) {
+      if (!item.expiresAt || item.expiresAt > Date.now()) {
+        incrementCacheHit();
+        return JSON.parse(item.val) as T;
+      }
+      memoryCache.delete(key);
+    }
+    incrementCacheMiss();
+    return null;
+  }
+
   try {
     const cached = await redis.get(key);
     if (cached) {
       incrementCacheHit();
       return JSON.parse(cached) as T;
     }
-    incrementCacheMiss();
-    return null;
   } catch (error) {
-    logger.error({ error, key }, 'Cache get error');
-    incrementCacheMiss();
-    return null;
+    // Fallback to memory cache
+    const item = memoryCache.get(key);
+    if (item && (!item.expiresAt || item.expiresAt > Date.now())) {
+      incrementCacheHit();
+      return JSON.parse(item.val) as T;
+    }
+    logger.debug({ key }, 'Cache get error (using memory fallback)');
   }
+
+  // Memory fallback check
+  const fallback = memoryCache.get(key);
+  if (fallback && (!fallback.expiresAt || fallback.expiresAt > Date.now())) {
+    incrementCacheHit();
+    return JSON.parse(fallback.val) as T;
+  }
+
+  incrementCacheMiss();
+  return null;
 }
 
 /**
@@ -203,16 +236,20 @@ export async function setCached<T>(
   value: T,
   ttlSeconds?: number
 ): Promise<void> {
+  const serialized = JSON.stringify(value);
+  const expiresAt = ttlSeconds ? Date.now() + ttlSeconds * 1000 : undefined;
+  memoryCache.set(key, { val: serialized, expiresAt });
+
+  if (isRedisDisabled) return;
+
   try {
-    const serialized = JSON.stringify(value);
     if (ttlSeconds) {
       await redis.setex(key, ttlSeconds, serialized);
     } else {
       await redis.set(key, serialized);
     }
   } catch (error) {
-    logger.error({ error, key }, 'Cache set error');
-    // Don't throw - cache failures shouldn't break the app
+    logger.debug({ key }, 'Redis set error (saved to memory cache)');
   }
 }
 
@@ -220,10 +257,13 @@ export async function setCached<T>(
  * Delete cached value
  */
 export async function deleteCached(key: string): Promise<void> {
+  memoryCache.delete(key);
+  if (isRedisDisabled) return;
+
   try {
     await redis.del(key);
   } catch (error) {
-    logger.error({ error, key }, 'Cache delete error');
+    logger.debug({ key }, 'Redis delete error');
   }
 }
 
