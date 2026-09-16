@@ -65,7 +65,7 @@ function loadConfig(): Config {
   const rawConfig = {
     nodeEnv: process.env.NODE_ENV,
     port: process.env.PORT,
-    baseUrl: process.env.BASE_URL,
+    baseUrl: process.env.BASE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050',
 
     supabaseUrl: process.env.SUPABASE_URL,
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -77,7 +77,7 @@ function loadConfig(): Config {
 
     twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
     twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
-    twilioPhoneNumber: process.env.TWILIO_PHONE_NUMBER,
+    twilioPhoneNumber: process.env.TWILIO_PHONE_NUMBER || process.env.NEXT_PUBLIC_TWILIO_PHONE || '+12513571708',
 
     groqApiKey: process.env.GROQ_API_KEY,
     groqModel: process.env.GROQ_MODEL,

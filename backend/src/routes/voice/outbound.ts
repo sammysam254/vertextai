@@ -6,6 +6,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { initiateOutboundCall } from '@/services/twilio/client.service';
 import { config } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
+import { normalizePhoneNumber } from '@/lib/phone';
 
 const logger = createLogger('routes:voice:outbound');
 
@@ -27,22 +28,22 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
     handler: async (request, reply) => {
       const { to, from } = request.body;
 
-      // Sanitize the "to" number
-      const toNumber = to.replace(/\s/g, '');
-      const fromNumber = (from || config.twilioPhoneNumber || '').replace(/\s/g, '');
-
-      if (!fromNumber) {
+      if (!to || !to.trim()) {
         return reply.status(400).send({
           error: 'Bad Request',
-          message: 'No caller ID configured. Set TWILIO_PHONE_NUMBER env var.',
+          message: 'Phone number to call is required',
           statusCode: 400,
         });
       }
 
-      if (!toNumber) {
+      // Sanitize and normalize the numbers
+      const toNumber = normalizePhoneNumber(to);
+      const fromNumber = normalizePhoneNumber(from || config.twilioPhoneNumber || '');
+
+      if (!fromNumber) {
         return reply.status(400).send({
           error: 'Bad Request',
-          message: 'Phone number to call is required',
+          message: 'No caller ID configured. Set TWILIO_PHONE_NUMBER or NEXT_PUBLIC_TWILIO_PHONE.',
           statusCode: 400,
         });
       }
@@ -66,9 +67,15 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
         });
       } catch (error: any) {
         logger.error({ error, to: toNumber }, 'Failed to initiate outbound call');
+
+        let message = error.message || 'Failed to initiate call';
+        if (message.includes('21215') || message.includes('not authorized to call')) {
+          message = `Twilio Error 21215: Account not authorized to call ${toNumber}. International permissions are required in Twilio Console. Enable Kenya in Voice Geo-Permissions: https://www.twilio.com/console/voice/calls/geo-permissions/low-risk. Full detail: ${error.message}`;
+        }
+
         return reply.status(500).send({
-          error: 'Internal Server Error',
-          message: error.message || 'Failed to initiate call',
+          error: 'Failed to initiate call',
+          message,
           statusCode: 500,
         });
       }

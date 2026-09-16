@@ -68,9 +68,9 @@ export async function initiateOutboundCall(params: {
       callSid: call.sid,
       status: call.status,
     };
-  } catch (error) {
+  } catch (error: any) {
     logger.error({ error, to, from }, 'Error initiating outbound call');
-    throw new ExternalServiceError('Twilio', 'Failed to initiate call');
+    throw new ExternalServiceError('Twilio', error?.message || 'Failed to initiate call');
   }
 }
 
@@ -97,9 +97,9 @@ export async function updateCall(params: {
     });
 
     logger.info({ callSid }, 'Call updated');
-  } catch (error) {
+  } catch (error: any) {
     logger.error({ error, callSid }, 'Error updating call');
-    throw new ExternalServiceError('Twilio', 'Failed to update call');
+    throw new ExternalServiceError('Twilio', error?.message || 'Failed to update call');
   }
 }
 
@@ -138,9 +138,9 @@ export async function sendSMS(params: {
       messageSid: message.sid,
       status: message.status,
     };
-  } catch (error) {
+  } catch (error: any) {
     logger.error({ error, to, from }, 'Error sending SMS');
-    throw new ExternalServiceError('Twilio', 'Failed to send SMS');
+    throw new ExternalServiceError('Twilio', error?.message || 'Failed to send SMS');
   }
 }
 

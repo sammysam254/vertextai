@@ -3,10 +3,16 @@
 // ==============================================
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import ws from 'ws';
 import { config } from './config';
 import { createLogger } from './logger';
 
 const logger = createLogger('supabase');
+
+// Polyfill global WebSocket for Node.js environments (especially Node < 22)
+if (typeof (globalThis as any).WebSocket === 'undefined') {
+  (globalThis as any).WebSocket = ws;
+}
 
 // ==============================================
 // Supabase Client (Service Role)
@@ -30,6 +36,7 @@ export const supabase: SupabaseClient = createClient(
       schema: 'public',
     },
     realtime: {
+      transport: ws as any,
       params: {
         eventsPerSecond: 10,
       },

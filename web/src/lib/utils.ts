@@ -16,14 +16,31 @@ export function cn(...inputs: ClassValue[]) {
  * Format phone number to E.164 format
  */
 export function formatPhoneNumber(phone: string): string {
-  const cleaned = phone.replace(/\D/g, '');
-  if (cleaned.length === 10) {
-    return `+1${cleaned}`;
+  if (!phone) return '';
+  const trimmed = phone.trim();
+  if (trimmed.startsWith('+')) return trimmed.replace(/[\s\-\(\)]/g, '');
+
+  const digits = trimmed.replace(/\D/g, '');
+  // Kenyan local mobile (07XXXXXXXX or 01XXXXXXXX)
+  if (/^0[17]\d{8}$/.test(digits)) {
+    return `+254${digits.slice(1)}`;
   }
-  if (cleaned.length === 11 && cleaned.startsWith('1')) {
-    return `+${cleaned}`;
+  // Kenyan with country code but no plus (254XXXXXXXXX)
+  if (/^254[17]\d{8}$/.test(digits)) {
+    return `+${digits}`;
   }
-  return phone;
+  // Kenyan 9-digit without leading 0 (7XXXXXXXX or 1XXXXXXXX)
+  if (/^[17]\d{8}$/.test(digits)) {
+    return `+254${digits}`;
+  }
+  // US 10-digit
+  if (digits.length === 10) {
+    return `+1${digits}`;
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+${digits}`;
+  }
+  return `+${digits}`;
 }
 
 /**

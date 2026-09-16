@@ -19,17 +19,19 @@ export async function voiceRoutes(app: FastifyInstance) {
   app.register(outboundCallRoutes);
 
   // All webhook routes below require Twilio signature validation
-  app.addHook('preHandler', twilioSignatureHook());
+  app.register(async (webhookScope) => {
+    webhookScope.addHook('preHandler', twilioSignatureHook());
 
-  // Inbound call webhook
-  app.post('/incoming', handleIncomingCall);
+    // Inbound call webhook
+    webhookScope.post('/incoming', handleIncomingCall);
 
-  // Conversation turn handler
-  app.post('/turn', handleConversationTurn);
+    // Conversation turn handler
+    webhookScope.post('/turn', handleConversationTurn);
 
-  // Call status callbacks (completed, failed, etc.)
-  app.post('/status', handleCallStatus);
+    // Call status callbacks (completed, failed, etc.)
+    webhookScope.post('/status', handleCallStatus);
 
-  // Dial/transfer status callbacks
-  app.post('/dial-status', handleDialStatus);
+    // Dial/transfer status callbacks
+    webhookScope.post('/dial-status', handleDialStatus);
+  });
 }

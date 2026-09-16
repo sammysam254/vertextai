@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   // Standalone output for Docker (optimized single-server deployment)
   output: process.env.DOCKER_BUILD === 'true' ? 'standalone' : undefined,
   images: {

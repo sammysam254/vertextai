@@ -5,6 +5,7 @@ import { Panel } from '@/components/ui/Panel';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Phone, Delete, X, PhoneCall, PhoneOff } from 'lucide-react';
+import { formatPhoneNumber } from '@/lib/utils';
 
 export default function DialerPage() {
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -36,11 +37,17 @@ export default function DialerPage() {
     setError('');
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050';
-      const response = await fetch(`${apiUrl}/api/v1/voice/outbound`, {
+      const formattedNumber = formatPhoneNumber(phoneNumber);
+      // In browser, use same-origin relative path which Next.js rewrites to backend, or explicit public API URL
+      let endpoint = '/api/v1/voice/outbound';
+      if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
+        endpoint = `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}/api/v1/voice/outbound`;
+      }
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: phoneNumber, from: twilioPhone }),
+        body: JSON.stringify({ to: formattedNumber, from: twilioPhone }),
       });
 
       const data = await response.json();

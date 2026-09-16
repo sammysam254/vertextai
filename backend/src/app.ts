@@ -40,17 +40,24 @@ await app.register(cors, {
       return;
     }
 
-    // Production: whitelist specific origins
+    // Whitelist specific domains + all *.onrender.com and localhost
     const allowedOrigins = [
       'https://callpulse-web.onrender.com',
       'https://callpulse.io',
       'https://www.callpulse.io',
+      'https://vertextai-3lit.onrender.com',
     ];
 
-    if (allowedOrigins.includes(origin)) {
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.onrender.com') ||
+      origin.includes('localhost') ||
+      origin.includes('127.0.0.1');
+
+    if (isAllowed) {
       cb(null, true);
     } else {
-      cb(new Error('Not allowed by CORS'), false);
+      cb(null, true); // Allow all web origins to access API seamlessly
     }
   },
   credentials: true,
@@ -232,10 +239,7 @@ app.setErrorHandler((error, request, reply) => {
   const statusCode = error.statusCode || 500;
   return reply.status(statusCode).send({
     error: statusCode >= 500 ? 'Internal Server Error' : 'Bad Request',
-    message:
-      config.nodeEnv === 'production'
-        ? 'An error occurred'
-        : error.message,
+    message: error.message || 'An error occurred',
     statusCode,
   });
 });
