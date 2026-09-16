@@ -18,6 +18,7 @@ export async function smsRoutes(app: FastifyInstance) {
 
     // Inbound SMS webhook
     webhookScope.post('/incoming', handleIncomingSMS);
+    webhookScope.post('/inbound', handleIncomingSMS);
 
     // Status callbacks
     webhookScope.post('/status', handleSMSStatus);

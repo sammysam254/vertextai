@@ -264,3 +264,108 @@ export async function getMessageDetails(params: {
     throw new ExternalServiceError('Twilio', 'Failed to fetch message details');
   }
 }
+
+// ==============================================
+// Phone Number Search & Provisioning
+// ==============================================
+
+export interface AvailableNumberResult {
+  phoneNumber: string;
+  friendlyName: string;
+  locality?: string;
+  region?: string;
+  postalCode?: string;
+  isoCountry: string;
+}
+
+/**
+ * Search available phone numbers on Twilio
+ */
+export async function searchAvailablePhoneNumbers(params: {
+  countryCode?: string;
+  areaCode?: string;
+  limit?: number;
+  accountSid?: string;
+  authToken?: string;
+}): Promise<AvailableNumberResult[]> {
+  const { countryCode = 'US', areaCode, limit = 10, accountSid, authToken } = params;
+
+  try {
+    const client = createTwilioClient({ accountSid, authToken });
+    const options: any = {
+      limit: Math.min(limit, 20),
+      voiceEnabled: true,
+      smsEnabled: true,
+    };
+
+    if (areaCode && areaCode.trim()) {
+      const parsedArea = parseInt(areaCode.trim(), 10);
+      if (!isNaN(parsedArea)) {
+        options.areaCode = parsedArea;
+      }
+    }
+
+    logger.info({ countryCode, areaCode }, 'Searching available phone numbers on Twilio');
+
+    const results = await client.availablePhoneNumbers(countryCode).local.list(options);
+
+    return results.map((n) => ({
+      phoneNumber: n.phoneNumber,
+      friendlyName: n.friendlyName,
+      locality: n.locality || '',
+      region: n.region || '',
+      postalCode: n.postalCode || '',
+      isoCountry: n.isoCountry || countryCode,
+    }));
+  } catch (error: any) {
+    logger.error({ error, countryCode, areaCode }, 'Error searching available phone numbers');
+    throw new ExternalServiceError('Twilio', error?.message || 'Failed to search phone numbers');
+  }
+}
+
+/**
+ * Purchase / provision an incoming phone number on Twilio and configure webhooks
+ */
+export async function purchasePhoneNumber(params: {
+  phoneNumber: string;
+  organizationId: string;
+  webhookBaseUrl?: string;
+  accountSid?: string;
+  authToken?: string;
+}): Promise<{ sid: string; phoneNumber: string; friendlyName: string }> {
+  const { phoneNumber, organizationId, webhookBaseUrl, accountSid, authToken } = params;
+
+  try {
+    const client = createTwilioClient({ accountSid, authToken });
+    const baseUrl =
+      webhookBaseUrl ||
+      (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
+
+    logger.info({ phoneNumber, organizationId, baseUrl }, 'Purchasing phone number on Twilio');
+
+    const incomingNumber = await client.incomingPhoneNumbers.create({
+      phoneNumber,
+      voiceUrl: `${baseUrl}/api/v1/voice/incoming`,
+      voiceMethod: 'POST',
+      smsUrl: `${baseUrl}/api/v1/sms/incoming`,
+      smsMethod: 'POST',
+      statusCallback: `${baseUrl}/api/v1/voice/status`,
+      statusCallbackMethod: 'POST',
+      friendlyName: `CallPulse - Org ${organizationId}`,
+    });
+
+    logger.info(
+      { sid: incomingNumber.sid, phoneNumber: incomingNumber.phoneNumber },
+      'Phone number purchased and webhooks configured successfully'
+    );
+
+    return {
+      sid: incomingNumber.sid,
+      phoneNumber: incomingNumber.phoneNumber,
+      friendlyName: incomingNumber.friendlyName,
+    };
+  } catch (error: any) {
+    logger.error({ error, phoneNumber, organizationId }, 'Error purchasing phone number on Twilio');
+    throw new ExternalServiceError('Twilio', error?.message || 'Failed to purchase phone number');
+  }
+}

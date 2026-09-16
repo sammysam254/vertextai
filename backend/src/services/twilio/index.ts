@@ -21,4 +21,6 @@ export {
   sendSMS,
   getCallDetails,
   getMessageDetails,
+  searchAvailablePhoneNumbers,
+  purchasePhoneNumber,
 } from './client.service';

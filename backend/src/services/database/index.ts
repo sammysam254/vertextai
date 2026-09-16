@@ -10,6 +10,8 @@ export {
   listOrganizations,
   getMerchantCode,
   getOrganizationByMerchantCode,
+  generateUniqueMerchantCode,
+  ensureOrganizationMerchantCode,
 } from './organization.service';
 
 // Contact services

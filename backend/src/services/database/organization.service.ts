@@ -14,6 +14,84 @@ const logger = createLogger('db:organization');
 // ==============================================
 
 /**
+ * Generate a strictly unique 6-digit merchant code that does not collide with any existing organization
+ */
+export async function generateUniqueMerchantCode(): Promise<string> {
+  try {
+    const { data: orgs } = await supabase
+      .from('organizations')
+      .select('id, metadata');
+
+    const usedCodes = new Set<string>();
+    if (orgs) {
+      for (const org of orgs) {
+        if (org.metadata?.merchant_code) {
+          usedCodes.add(String(org.metadata.merchant_code));
+        }
+        // Also reserve the deterministic fallback hash
+        let hash = 0;
+        for (let i = 0; i < org.id.length; i++) {
+          hash = (hash * 31 + org.id.charCodeAt(i)) >>> 0;
+        }
+        usedCodes.add(String(100000 + (hash % 900000)));
+      }
+    }
+
+    let code: string;
+    let attempts = 0;
+    do {
+      const num = Math.floor(100000 + Math.random() * 900000);
+      code = String(num);
+      attempts++;
+    } while (usedCodes.has(code) && attempts < 10000);
+
+    return code;
+  } catch (err) {
+    logger.error({ err }, 'Error generating unique merchant code, falling back to random');
+    return String(Math.floor(100000 + Math.random() * 900000));
+  }
+}
+
+/**
+ * Ensure organization has a persistent unique 6-digit merchant code saved in database
+ */
+export async function ensureOrganizationMerchantCode(orgId: string): Promise<string> {
+  try {
+    const { data: org, error } = await supabase
+      .from('organizations')
+      .select('id, metadata')
+      .eq('id', orgId)
+      .maybeSingle();
+
+    if (error || !org) {
+      return '100001';
+    }
+
+    if (org.metadata?.merchant_code) {
+      return String(org.metadata.merchant_code);
+    }
+
+    // Generate guaranteed unique code
+    const uniqueCode = await generateUniqueMerchantCode();
+    const updatedMeta = {
+      ...(org.metadata || {}),
+      merchant_code: uniqueCode,
+    };
+
+    await supabase
+      .from('organizations')
+      .update({ metadata: updatedMeta })
+      .eq('id', orgId);
+
+    logger.info({ orgId, uniqueCode }, 'Persisted permanent unique merchant code to organization');
+    return uniqueCode;
+  } catch (err) {
+    logger.error({ err, orgId }, 'Error ensuring merchant code');
+    return '100001';
+  }
+}
+
+/**
  * Compute or retrieve 6-digit merchant code for organization
  */
 export function getMerchantCode(org: { id: string; metadata?: any }): string {
@@ -29,12 +107,25 @@ export function getMerchantCode(org: { id: string; metadata?: any }): string {
 }
 
 /**
- * Get organization by 6-digit merchant code
+ * Get organization by 6-digit merchant code (strict, unique)
  */
 export async function getOrganizationByMerchantCode(
   code: string
 ): Promise<Organization | null> {
   try {
+    // 1. Direct match on metadata->>'merchant_code'
+    const { data: directMatch } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('metadata->>merchant_code', code)
+      .maybeSingle();
+
+    if (directMatch) {
+      logger.debug({ orgId: directMatch.id, code }, 'Organization found by persisted merchant code');
+      return directMatch;
+    }
+
+    // 2. Query all organizations to match legacy hash
     const { data: orgs, error } = await supabase
       .from('organizations')
       .select('*');
@@ -52,6 +143,18 @@ export async function getOrganizationByMerchantCode(
     const match = orgs.find((org) => getMerchantCode(org) === code);
     if (match) {
       logger.debug({ orgId: match.id, code }, 'Organization found by merchant code');
+      // Persist to database so it stays permanently unique and never changes
+      if (!match.metadata?.merchant_code) {
+        await supabase
+          .from('organizations')
+          .update({
+            metadata: {
+              ...(match.metadata || {}),
+              merchant_code: code,
+            },
+          })
+          .eq('id', match.id);
+      }
       return match;
     }
 
@@ -90,21 +193,44 @@ const DEFAULT_FALLBACK_ORG: Organization = {
  * Primary lookup for webhook handlers
  */
 export async function getOrganizationByPhone(
-  phone: string
+  phone: string,
+  exactOnly: boolean = false
 ): Promise<Organization | null> {
   try {
-    const { data, error } = await supabase
+    const cleanPhone = (phone || '').trim();
+    if (!cleanPhone) {
+      return exactOnly ? null : DEFAULT_FALLBACK_ORG;
+    }
+
+    // Direct match on twilio_phone_number
+    const { data } = await supabase
       .from('organizations')
       .select('*')
-      .eq('twilio_phone_number', phone)
+      .eq('twilio_phone_number', cleanPhone)
       .maybeSingle();
 
     if (data) {
-      logger.debug({ orgId: data.id, phone }, 'Organization found by phone');
+      logger.debug({ orgId: data.id, phone: cleanPhone }, 'Organization found by phone');
       return data;
     }
 
-    // Fallback: check first organization in table
+    // Also check metadata->>dedicated_phone
+    const { data: metaMatch } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('metadata->>dedicated_phone', cleanPhone)
+      .maybeSingle();
+
+    if (metaMatch) {
+      logger.debug({ orgId: metaMatch.id, phone: cleanPhone }, 'Organization found by metadata dedicated_phone');
+      return metaMatch;
+    }
+
+    if (exactOnly) {
+      return null;
+    }
+
+    // Fallback: check first organization in table only if exactOnly is false
     const { data: firstOrg } = await supabase
       .from('organizations')
       .select('*')
@@ -114,7 +240,7 @@ export async function getOrganizationByPhone(
     return firstOrg || DEFAULT_FALLBACK_ORG;
   } catch (error) {
     logger.debug({ error, phone }, 'Note getting organization by phone');
-    return DEFAULT_FALLBACK_ORG;
+    return exactOnly ? null : DEFAULT_FALLBACK_ORG;
   }
 }
 

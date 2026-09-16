@@ -11,6 +11,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { supabase } from '@/lib/supabase';
 import { createLogger } from '@/lib/logger';
+import { ensureOrganizationMerchantCode, generateUniqueMerchantCode } from '@/services/database';
 
 const logger = createLogger('route:auth:setup');
 
@@ -30,8 +31,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           type: 'object',
           required: ['userId', 'organizationName'],
           properties: {
-            userId:               { type: 'string' },
-            organizationName:     { type: 'string', minLength: 1 },
+            userId:               { type: 'string', format: 'uuid' },
+            organizationName:     { type: 'string', minLength: 2 },
             twilioPhoneNumber:    { type: 'string' },
             escalationPhoneNumber:{ type: 'string' },
           },
@@ -42,24 +43,27 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const {
         userId,
         organizationName,
-        twilioPhoneNumber    = '+10000000000', // placeholder — user sets real one in Settings
-        escalationPhoneNumber = '+10000000000',
+        twilioPhoneNumber    = '+12513571708', // placeholder — user sets real one in Settings
+        escalationPhoneNumber = '+254706499848',
       } = request.body;
 
-      logger.info({ userId, organizationName }, 'Setting up new organization');
+      logger.info({ userId, organizationName }, 'Creating org via service role');
 
-      // ── 1. Check user exists in auth.users ───────────────────────────
-      const { data: authUser, error: authErr } =
+      // ── 1. Verify user exists in auth.users ─────────────────────────────
+      const { data: userRecord, error: userErr } =
         await supabase.auth.admin.getUserById(userId);
 
-      if (authErr || !authUser.user) {
-        logger.error({ authErr, userId }, 'User not found in auth.users');
+      if (userErr || !userRecord?.user) {
+        logger.error({ userErr, userId }, 'User not found in auth.users');
         return reply.status(404).send({
           error: 'Not Found',
-          message: 'User not found — confirm your email first',
+          message: 'User does not exist in auth.users',
           statusCode: 404,
         });
       }
+
+      // Generate unique merchant code
+      const merchantCode = await generateUniqueMerchantCode();
 
       // ── 2. Create organization ────────────────────────────────────────
       const { data: org, error: orgErr } = await supabase
@@ -68,6 +72,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           name:                  organizationName,
           twilio_phone_number:   twilioPhoneNumber,
           escalation_phone_number: escalationPhoneNumber,
+          metadata: { merchant_code: merchantCode, owner_user_id: userId },
         })
         .select()
         .single();
@@ -110,7 +115,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       logger.info(
-        { orgId: org.id, userId },
+        { orgId: org.id, userId, merchantCode },
         'Organization and membership created successfully'
       );
 
@@ -118,11 +123,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         organizationId: org.id,
         organizationName: org.name,
         role: 'owner',
+        merchantCode,
+        twilioPhoneNumber: org.twilio_phone_number,
+        isDedicatedNumber: false,
       });
     }
   );
 
-  // POST /api/v1/auth/resolve - Resolve or auto-provision dedicated organization for user
+  // POST /api/v1/auth/resolve - Auto-resolve or create personal tenant organization for user
   fastify.post<{
     Body: {
       userId: string;
@@ -147,29 +155,29 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       if (member && member.organization_id) {
         const org = (member as any).organizations;
         const orgId = member.organization_id;
-        let hash = 0;
-        for (let i = 0; i < orgId.length; i++) {
-          hash = (hash * 31 + orgId.charCodeAt(i)) >>> 0;
+
+        // Ensure unique, persistent merchant code that never changes
+        let merchantCode = org?.metadata?.merchant_code;
+        if (!merchantCode) {
+          merchantCode = await ensureOrganizationMerchantCode(orgId);
         }
-        const merchantCode = org?.metadata?.merchant_code || String(100000 + (hash % 900000));
+
+        const phone = org?.twilio_phone_number || '+12513571708';
+        const isDedicated = Boolean(phone !== '+12513571708' || org?.metadata?.dedicated_number);
 
         return reply.status(200).send({
           organizationId: orgId,
           organizationName: org?.name || 'My Call Center',
           merchantCode,
           role: member.role || 'owner',
+          twilioPhoneNumber: phone,
+          isDedicatedNumber: isDedicated,
         });
       }
 
-      // Auto-provision personal organization for this user
+      // Auto-provision personal organization for this user with strictly unique code
       const orgName = name || (email ? `${email.split('@')[0]}'s Call Center` : 'My Call Center');
-      
-      // Compute deterministic 6-digit code from userId
-      let hash = 0;
-      for (let i = 0; i < userId.length; i++) {
-        hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
-      }
-      const newMerchantCode = String(100000 + (hash % 900000));
+      const newMerchantCode = await generateUniqueMerchantCode();
 
       const { data: newOrg, error: orgErr } = await supabase
         .from('organizations')
@@ -201,6 +209,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         organizationName: newOrg.name,
         merchantCode: newMerchantCode,
         role: 'owner',
+        twilioPhoneNumber: newOrg.twilio_phone_number || '+12513571708',
+        isDedicatedNumber: false,
       });
     } catch (err: any) {
       logger.error({ err, userId }, 'Error in /api/v1/auth/resolve');

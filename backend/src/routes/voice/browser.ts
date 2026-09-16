@@ -97,7 +97,7 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
       ? `${proto}://${host}`
       : (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
 
-    const callerId = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');
+    let callerId = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');
     const normalizedTo = normalizePhoneNumber(to);
     const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
 
@@ -124,6 +124,19 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
     }
     if (!orgId || orgId.length < 10) {
       orgId = '00000000-0000-0000-0000-000000000000';
+    }
+
+    // If organization has a dedicated phone number, use it as callerId instead of the shared platform number
+    if (orgId && orgId !== '00000000-0000-0000-0000-000000000000') {
+      try {
+        const { getOrganizationById } = await import('@/services/database');
+        const org = await getOrganizationById(orgId);
+        if (org?.twilio_phone_number) {
+          callerId = normalizePhoneNumber(org.twilio_phone_number);
+        }
+      } catch (e) {
+        logger.debug({ e }, 'Note checking org dedicated phone for callerId');
+      }
     }
 
     // Save outbound call to database

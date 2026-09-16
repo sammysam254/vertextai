@@ -17,12 +17,14 @@ async function start() {
     const { smsRoutes } = await import('./routes/sms');
     const { agentRoutes } = await import('./routes/agents');
     const { authRoutes } = await import('./routes/auth');
+    const { phoneRoutes } = await import('./routes/phone');
 
     // Register routes
     await app.register(voiceRoutes, { prefix: '/api/v1/voice' });
     await app.register(smsRoutes,   { prefix: '/api/v1/sms' });
     await app.register(agentRoutes, { prefix: '/api/v1/agents' });
     await app.register(authRoutes,  { prefix: '/api/v1/auth' });
+    await app.register(phoneRoutes, { prefix: '/api/v1/phone' });
 
     // Start listening
     await app.listen({

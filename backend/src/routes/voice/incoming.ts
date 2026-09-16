@@ -44,10 +44,23 @@ export async function handleIncomingCall(
 
   try {
     // 1. Direct match by dedicated phone number
-    const org = (await getCachedOrganizationByPhone(To)) || (await getOrganizationByPhone(To));
+    const normalizedTo = To ? normalizePhoneNumber(To) : '';
+    const platformPhone = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');
 
-    // If org has a dedicated number (not the shared platform number)
-    if (org && org.twilio_phone_number === To && To !== config.twilioPhoneNumber) {
+    // Strict lookup for dedicated organization line (exactOnly = true)
+    const org =
+      (await getCachedOrganizationByPhone(To)) ||
+      (normalizedTo ? await getCachedOrganizationByPhone(normalizedTo) : null) ||
+      (await getOrganizationByPhone(To, true)) ||
+      (normalizedTo ? await getOrganizationByPhone(normalizedTo, true) : null);
+
+    // If org has a dedicated number and it's not the shared platform number: route directly!
+    const isShared = (To === config.twilioPhoneNumber) || (normalizedTo === platformPhone);
+    if (org && !isShared) {
+      logger.info(
+        { orgId: org.id, orgName: org.name, dedicatedNumber: org.twilio_phone_number, to: To },
+        'Incoming call dialed directly to dedicated merchant number — bypassing IVR code prompt'
+      );
       await setOrganizationCache(org);
       return routeCallToOrganization(org, CallSid, From, To, reply);
     }
