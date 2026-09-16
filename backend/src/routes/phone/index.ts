@@ -10,8 +10,14 @@ import { normalizePhoneNumber } from '@/lib/phone';
 import { searchAvailablePhoneNumbers, purchasePhoneNumber } from '@/services/twilio';
 import { setOrganizationCache } from '@/services/cache';
 import { getOrganizationById } from '@/services/database';
+import { getWalletSummary, debitWallet, creditWallet } from '@/services/database/wallet.service';
 
 const logger = createLogger('routes:phone');
+
+// Dedicated number pricing: Twilio base cost ($1.15) + $5.00 USD profit markup
+const NUMBER_BASE_PRICE = 1.15;
+const NUMBER_PROFIT_MARKUP = 5.00;
+const TOTAL_NUMBER_PRICE = NUMBER_BASE_PRICE + NUMBER_PROFIT_MARKUP; // $6.15 USD
 
 export const phoneRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/phone/search - Search available phone numbers via Twilio API
@@ -36,6 +42,12 @@ export const phoneRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(200).send({
         numbers,
         total: numbers.length,
+        pricing: {
+          baseCost: NUMBER_BASE_PRICE,
+          markup: NUMBER_PROFIT_MARKUP,
+          totalPrice: TOTAL_NUMBER_PRICE,
+          currency: 'USD',
+        },
       });
     } catch (err: any) {
       logger.error({ err, country, areaCode }, 'Failed to search available numbers');
@@ -69,6 +81,30 @@ export const phoneRoutes: FastifyPluginAsync = async (fastify) => {
       'Provisioning dedicated phone number for organization'
     );
 
+    // 1. Verify organization wallet has sufficient balance ($6.15 USD)
+    const wallet = await getWalletSummary(organizationId);
+    if (wallet.balance < TOTAL_NUMBER_PRICE) {
+      return reply.status(402).send({
+        error: 'Payment Required',
+        requiredAmount: TOTAL_NUMBER_PRICE,
+        currentBalance: wallet.balance,
+        message: `Dedicated number provisioning requires $${TOTAL_NUMBER_PRICE.toFixed(2)} USD ($${NUMBER_BASE_PRICE.toFixed(2)} number cost + $${NUMBER_PROFIT_MARKUP.toFixed(2)} setup fee). Your current balance is $${wallet.balance.toFixed(2)}. Please recharge your wallet.`,
+      });
+    }
+
+    // 2. Debit wallet
+    await debitWallet({
+      organizationId,
+      amount: TOTAL_NUMBER_PRICE,
+      type: 'number_purchase',
+      description: `Dedicated Business Phone (${normalizedNumber}): $${NUMBER_BASE_PRICE.toFixed(2)} carrier + $${NUMBER_PROFIT_MARKUP.toFixed(2)} platform fee`,
+      metadata: {
+        phoneNumber: normalizedNumber,
+        basePrice: NUMBER_BASE_PRICE,
+        profitMarkup: NUMBER_PROFIT_MARKUP,
+      },
+    });
+
     try {
       const host = (request.headers['x-forwarded-host'] as string) || request.headers.host;
       const proto = (request.headers['x-forwarded-proto'] as string) || 'https';
@@ -79,12 +115,24 @@ export const phoneRoutes: FastifyPluginAsync = async (fastify) => {
           ? config.baseUrl
           : 'https://vertext.site';
 
-      // 1. Purchase phone number on Twilio with webhooks configured
-      const purchaseResult = await purchasePhoneNumber({
-        phoneNumber: normalizedNumber,
-        organizationId,
-        webhookBaseUrl: effectiveBaseUrl,
-      });
+      // 3. Purchase phone number on Twilio with webhooks configured
+      let purchaseResult;
+      try {
+        purchaseResult = await purchasePhoneNumber({
+          phoneNumber: normalizedNumber,
+          organizationId,
+          webhookBaseUrl: effectiveBaseUrl,
+        });
+      } catch (purchaseErr: any) {
+        // Refund wallet if Twilio purchase failed
+        await creditWallet({
+          organizationId,
+          amount: TOTAL_NUMBER_PRICE,
+          paymentGateway: 'wallet',
+          description: `Refund: Dedicated Phone Provisioning failed for ${normalizedNumber}`,
+        });
+        throw purchaseErr;
+      }
 
       // 2. Fetch existing organization metadata
       const org = await getOrganizationById(organizationId);

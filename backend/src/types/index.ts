@@ -16,8 +16,12 @@ export interface Organization {
   escalation_phone_number: string;
   escalation_keywords: string[];
   subscription_tier: 'free' | 'pro' | 'enterprise';
+  wallet_balance?: number;
+  monthly_free_minutes_used?: number;
   metadata: Record<string, unknown>;
 }
+
+export * from './billing';
 
 export interface Contact {
   id: string;

@@ -55,3 +55,14 @@ export {
   getAvailableAgents,
   findOrCreateAgent,
 } from './agent.service';
+
+// Wallet & Billing services
+export {
+  getWalletSummary,
+  creditWallet,
+  debitWallet,
+  checkCanMakeCall,
+  billCallUsage,
+  listWalletTransactions,
+} from './wallet.service';
+

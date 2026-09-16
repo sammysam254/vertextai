@@ -134,8 +134,21 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
         if (org?.twilio_phone_number) {
           callerId = normalizePhoneNumber(org.twilio_phone_number);
         }
+
+        // Check if organization has free minutes or sufficient wallet balance
+        const { checkCanMakeCall } = await import('@/services/database/wallet.service');
+        const canCall = await checkCanMakeCall(orgId);
+        if (!canCall.allowed) {
+          logger.warn({ orgId }, 'Outbound call prevented due to depleted wallet and free minutes');
+          const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna-Neural">Your CallPulse wallet balance and monthly free minutes are exhausted. Please top up your wallet in the dashboard to make calls.</Say>
+  <Hangup/>
+</Response>`;
+          return reply.status(200).type('text/xml').send(twiml);
+        }
       } catch (e) {
-        logger.debug({ e }, 'Note checking org dedicated phone for callerId');
+        logger.debug({ e }, 'Note checking org dedicated phone and wallet for outbound call');
       }
     }
 

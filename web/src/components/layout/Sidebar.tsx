@@ -223,6 +223,17 @@ export function Sidebar() {
               Phone &amp; Merchant Routing
             </Link>
             <Link
+              href={'/dashboard/billing' as any}
+              onClick={() => setIsMobileOpen(false)}
+              className={cn(
+                'block px-3 py-2 text-sm text-slate-blue-300 hover:text-white rounded-md hover:bg-navy-dark-elevated transition-colors flex items-center justify-between',
+                isActive('/dashboard/billing') && 'text-chart-cyan font-semibold'
+              )}
+            >
+              <span>Billing &amp; Wallet</span>
+              <span className="text-[10px] bg-chart-cyan/20 text-chart-cyan px-1.5 py-0.5 rounded font-mono">USD</span>
+            </Link>
+            <Link
               href="/dashboard/settings/ai"
               onClick={() => setIsMobileOpen(false)}
               className={cn(

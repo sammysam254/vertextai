@@ -1,17 +1,54 @@
 'use client';
 
-import { Bell, Search, Copy, Check, Hash, PhoneIncoming } from 'lucide-react';
+import { Bell, Search, Copy, Check, Hash, PhoneIncoming, Coins, Wallet } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useOrganization } from '@/lib/context/OrganizationContext';
+import { TopUpModal } from '@/components/billing/TopUpModal';
 import Link from 'next/link';
 
 export function DashboardHeader() {
+  const { organizationId, merchantCode: contextCode } = useOrganization();
+
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
-  const [merchantCode, setMerchantCode] = useState('104829');
+  const [merchantCode, setMerchantCode] = useState(contextCode || '104829');
   const [copied, setCopied] = useState(false);
   const [activeCallCount, setActiveCallCount] = useState(0);
+  const [walletBalance, setWalletBalance] = useState(0.0);
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false);
+
+  const getApiEndpoint = (path: string): string => {
+    if (typeof window !== 'undefined') {
+      if (process.env.NEXT_PUBLIC_API_URL) {
+        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${path}`;
+      }
+      if (window.location.hostname.includes('vertext.site')) {
+        return `https://vertext.site${path}`;
+      }
+    }
+    return path;
+  };
+
+  const fetchWallet = useCallback(async () => {
+    if (!organizationId) return;
+    try {
+      const res = await fetch(getApiEndpoint(`/api/v1/billing/wallet?organizationId=${organizationId}`));
+      if (res.ok) {
+        const data = await res.json();
+        setWalletBalance(data.balance || 0);
+      }
+    } catch (e) {}
+  }, [organizationId]);
+
+  useEffect(() => {
+    if (contextCode) setMerchantCode(contextCode);
+  }, [contextCode]);
+
+  useEffect(() => {
+    fetchWallet();
+  }, [fetchWallet]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -26,22 +63,8 @@ export function DashboardHeader() {
         setUserName(name);
         setUserEmail(data.user.email || '');
 
-        // Fetch user's organization to get deterministic merchant code
         try {
-          const { data: member } = await supabase
-            .from('organization_members')
-            .select('organization_id')
-            .eq('user_id', data.user.id)
-            .limit(1)
-            .single();
-
-          const targetId = member?.organization_id || data.user.id;
-          let hash = 0;
-          for (let i = 0; i < targetId.length; i++) {
-            hash = (hash * 31 + targetId.charCodeAt(i)) >>> 0;
-          }
-          const code = String(100000 + (hash % 900000));
-          setMerchantCode(code);
+          const targetId = organizationId || data.user.id;
 
           // Check live calls count
           const { data: liveCalls } = await supabase
@@ -51,13 +74,10 @@ export function DashboardHeader() {
             .in('status', ['in-progress', 'ringing']);
 
           setActiveCallCount(liveCalls?.length || 0);
-        } catch {
-          // Fallback code
-          setMerchantCode('104829');
-        }
+        } catch {}
       }
     });
-  }, []);
+  }, [organizationId]);
 
   const copyMerchantCode = () => {
     navigator.clipboard.writeText(merchantCode);
@@ -104,6 +124,19 @@ export function DashboardHeader() {
             </Link>
           )}
 
+          {/* Interactive Wallet Balance Badge */}
+          <div
+            onClick={() => setIsTopUpOpen(true)}
+            title="Available in-app wallet balance for voice minutes and dedicated numbers. Click to top up."
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 bg-accent-primary/15 hover:bg-accent-primary/25 border border-accent-primary/40 hover:border-chart-cyan rounded-lg cursor-pointer transition-all text-xs shrink-0 shadow-sm"
+          >
+            <Coins className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-chart-cyan shrink-0" />
+            <span className="text-slate-blue-300 font-medium hidden sm:inline text-xs">Wallet:</span>
+            <span className="font-mono font-bold text-white tracking-wide text-[11px] sm:text-xs">
+              ${walletBalance.toFixed(2)}
+            </span>
+          </div>
+
           {/* 6-Digit Merchant Code Badge */}
           <div
             onClick={copyMerchantCode}
@@ -140,6 +173,16 @@ export function DashboardHeader() {
           </div>
         </div>
       </div>
+
+      {/* TopUpModal */}
+      <TopUpModal
+        isOpen={isTopUpOpen}
+        onClose={() => setIsTopUpOpen(false)}
+        onSuccess={(newBal) => {
+          setWalletBalance(newBal);
+          fetchWallet();
+        }}
+      />
     </header>
   );
 }

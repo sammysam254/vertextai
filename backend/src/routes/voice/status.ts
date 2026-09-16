@@ -70,19 +70,30 @@ export async function handleCallStatus(
       }
     }
 
-    // 4. Generate summary if completed and has communication record
-    if (CallStatus === 'completed' && communication.id) {
-      getFullTranscript(communication.id)
-        .then(async (transcript) => {
-          if (transcript && transcript.length > 0) {
-            const summary = await generateCallSummary(transcript);
-            await updateCommunication(communication.id, { summary });
-            logger.info({ communicationId: communication.id }, 'Call summary generated');
-          }
-        })
-        .catch((error) => {
-          logger.debug({ error, communicationId: communication.id }, 'Note generating summary');
+    // Real-time call billing: 3 free minutes monthly + 20% platform markup
+    if (CallStatus === 'completed' && communication.organization_id && (updates.duration_seconds || 0) > 0) {
+      try {
+        const { billCallUsage } = await import('@/services/database/wallet.service');
+        const billingResult = await billCallUsage({
+          organizationId: communication.organization_id,
+          durationSeconds: updates.duration_seconds,
+          callSid: CallSid,
         });
+        updates.cost_usd = billingResult.amountCharged;
+        logger.info(
+          {
+            callSid: CallSid,
+            orgId: communication.organization_id,
+            durationSeconds: updates.duration_seconds,
+            freeMinutesApplied: billingResult.freeMinutesApplied,
+            billableMinutes: billingResult.billableMinutes,
+            amountCharged: billingResult.amountCharged,
+          },
+          'Call billed and deducted from wallet successfully'
+        );
+      } catch (billingErr) {
+        logger.warn({ billingErr, callSid: CallSid }, 'Note processing call usage billing');
+      }
     }
 
     await updateCommunication(communication.id, updates);
