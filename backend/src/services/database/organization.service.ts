@@ -180,7 +180,7 @@ const DEFAULT_FALLBACK_ORG: Organization = {
   twilio_auth_token: null,
   twilio_phone_number: '+12513571708',
   ai_system_prompt: 'You are an intelligent, helpful voice AI assistant for Vertex AI. Be concise, warm, and professional.',
-  ai_voice_id: 'Polly.Joanna-Neural',
+  ai_voice_id: 'alice',
   ai_model: 'llama3-70b-8192',
   escalation_phone_number: '',
   escalation_keywords: ['agent', 'human', 'representative', 'operator', 'transfer', 'person'],

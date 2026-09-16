@@ -234,9 +234,9 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
 
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna-Neural">Hello! This is ${escapeXml(agentName)} from ${escapeXml(companyName)} calling you.</Say>
+  <Say voice="alice">Hello! This is ${escapeXml(agentName)} from ${escapeXml(companyName)} calling you.</Say>
   <Gather action="${escapeXml(turnUrl)}" input="speech dtmf" method="POST" speechTimeout="auto" timeout="5" numDigits="1">
-    <Say voice="Polly.Joanna-Neural">How can we assist you today? You can speak freely or press 0 to speak with a human agent.</Say>
+    <Say voice="alice">How can we assist you today? You can speak freely or press 0 to speak with a human agent.</Say>
   </Gather>
   <Redirect method="POST">${escapeXml(turnUrl)}</Redirect>
 </Response>`;

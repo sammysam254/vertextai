@@ -281,7 +281,7 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
       : (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
 
     const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status`;
-    const voiceId = 'Polly.Joanna-Neural';
+    const voiceId = 'alice';
     const normalizedPhone = normalizePhoneNumber(agentPhone);
     const callerId = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');
 

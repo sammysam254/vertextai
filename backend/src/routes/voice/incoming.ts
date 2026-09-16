@@ -1,5 +1,5 @@
 // ==============================================
-// Voice Incoming Call Webhook Handler with 6-Digit Merchant Routing
+// Voice Incoming Call Webhook Handler with 6-Digit Merchant Routing & WebRTC Bridge
 // ==============================================
 
 import { FastifyRequest, FastifyReply } from 'fastify';
@@ -13,7 +13,7 @@ import {
   findOrCreateContact,
   createCommunication,
 } from '@/services/database';
-import { initializeCallState } from '@/services/cache';
+import { initializeCallState, setCallLatestStatus } from '@/services/cache';
 import type { TwilioVoiceWebhook } from '@/types';
 
 const logger = createLogger('route:voice:incoming');
@@ -35,15 +35,110 @@ export async function handleIncomingCall(
   request: FastifyRequest<{ Body: TwilioVoiceWebhook }>,
   reply: FastifyReply
 ) {
-  const { CallSid, From, To } = request.body || {};
+  const body = (request.body as any) || {};
+  const query = (request.query as any) || {};
+  const CallSid = body.CallSid || query.CallSid || '';
+  const From = body.From || query.From || '';
+  const To = body.To || query.To || '';
+
+  const host = (request.headers['x-forwarded-host'] as string) || request.headers.host;
+  const proto = (request.headers['x-forwarded-proto'] as string) || 'https';
+  const effectiveBaseUrl = (host && !host.includes('localhost') && !host.includes('127.0.0.1'))
+    ? `${proto}://${host}`
+    : (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
 
   logger.info(
     { callSid: CallSid, from: From, to: To },
-    'Inbound call received'
+    'Inbound or WebRTC voice call received'
   );
 
+  // ── 0. WebRTC Browser Client Outbound Calling ─────────────────────────────
+  // If the call originates from a browser Twilio Client (starts with "client:")
+  if (From && (From.startsWith('client:') || From.includes('agent_') || From.includes('merchant_'))) {
+    logger.info(
+      { from: From, to: To, callSid: CallSid },
+      'Detected browser WebRTC client outbound call; bridging directly to recipient'
+    );
+
+    const normalizedTo = normalizePhoneNumber(To);
+    let callerId = normalizePhoneNumber(config.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER || '+12513571708');
+    const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(CallSid)}`;
+
+    if (!normalizedTo) {
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">No destination phone number was provided. Please check the number and try again.</Say>
+  <Hangup/>
+</Response>`;
+      return reply.status(200).type('text/xml').send(twiml);
+    }
+
+    let orgId = body.organizationId || query.organizationId;
+    if (!orgId && typeof From === 'string' && From.includes('merchant_')) {
+      const match = From.match(/merchant_([0-9a-fA-F-]+)/);
+      if (match && match[1]) {
+        orgId = match[1];
+      }
+    }
+    if (!orgId || orgId.length < 10) {
+      orgId = '00000000-0000-0000-0000-000000000000';
+    }
+
+    if (orgId && orgId !== '00000000-0000-0000-0000-000000000000') {
+      try {
+        const { getOrganizationById } = await import('@/services/database');
+        const org = await getOrganizationById(orgId);
+        if (org?.twilio_phone_number) {
+          callerId = normalizePhoneNumber(org.twilio_phone_number);
+        }
+
+        const { checkCanMakeCall } = await import('@/services/database/wallet.service');
+        const canCall = await checkCanMakeCall(orgId);
+        if (!canCall.allowed) {
+          logger.warn({ orgId }, 'Outbound call prevented due to depleted wallet and free minutes');
+          const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Your CallPulse wallet balance and monthly free minutes are exhausted. Please top up your wallet in the dashboard to make calls.</Say>
+  <Hangup/>
+</Response>`;
+          return reply.status(200).type('text/xml').send(twiml);
+        }
+      } catch (e) {
+        logger.debug({ e }, 'Note checking org dedicated phone and wallet for outbound call');
+      }
+    }
+
+    try {
+      const contact = await findOrCreateContact(orgId, normalizedTo);
+      const comm = await createCommunication({
+        organizationId: orgId,
+        contactId: contact.id,
+        type: 'voice_out',
+        twilioSid: CallSid,
+        fromNumber: callerId,
+        toNumber: normalizedTo,
+        status: 'in-progress',
+      });
+      await initializeCallState(CallSid, orgId, contact.id, comm.id);
+      await setCallLatestStatus(CallSid, 'in-progress');
+    } catch (e: any) {
+      logger.debug({ e: e?.message }, 'Note saving browser call communication');
+    }
+
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial callerId="${escapeXml(callerId)}" timeout="35" answerOnBridge="true" action="${escapeXml(dialStatusUrl)}">
+    <Number>${escapeXml(normalizedTo)}</Number>
+  </Dial>
+  <Say voice="alice">The recipient is currently unavailable. Please try again later.</Say>
+  <Hangup/>
+</Response>`;
+
+    return reply.status(200).type('text/xml').send(twiml);
+  }
+
+  // ── 1. Inbound PSTN Calling ───────────────────────────────────────────────
   try {
-    // 1. Direct match by dedicated phone number
     const normalizedTo = To ? normalizePhoneNumber(To) : '';
     const platformPhone = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');
 
@@ -66,13 +161,13 @@ export async function handleIncomingCall(
     }
 
     // 2. Shared platform number: Prompt for 6-digit merchant code
-    const merchantRouteUrl = `${config.baseUrl}/api/v1/voice/merchant-route`;
+    const merchantRouteUrl = `${effectiveBaseUrl}/api/v1/voice/merchant-route`;
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather action="${merchantRouteUrl}" method="POST" numDigits="6" timeout="5" finishOnKey="#">
-    <Say voice="Polly.Joanna-Neural">Please enter the 6-digit merchant code, or press 1 for support.</Say>
+    <Say voice="alice">Please enter the 6-digit merchant code, or press 1 for support.</Say>
   </Gather>
-  <Say voice="Polly.Joanna-Neural">Connecting to support. Please hold.</Say>
+  <Say voice="alice">Connecting to support. Please hold.</Say>
   <Redirect method="POST">${merchantRouteUrl}?Digits=default</Redirect>
 </Response>`;
 
@@ -81,14 +176,14 @@ export async function handleIncomingCall(
     logger.error({ error, callSid: CallSid }, 'Error handling incoming call');
 
     const callerId = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');
-    const dialStatusUrl = `${config.baseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(CallSid || '')}`;
+    const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(CallSid || '')}`;
     const fallbackTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna-Neural">Connecting to support. Please hold.</Say>
+  <Say voice="alice">Connecting to support. Please hold.</Say>
   <Dial timeout="25" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
     +254706499848
   </Dial>
-  <Say voice="Polly.Joanna-Neural">All representatives are busy. Please leave a message after the beep.</Say>
+  <Say voice="alice">All representatives are busy. Please leave a message after the beep.</Say>
   <Record timeout="10" maxLength="60"/>
   <Hangup/>
 </Response>`;
@@ -115,6 +210,12 @@ export async function handleMerchantRoute(
   const from = body.From || query.From || '';
   const to = body.To || query.To || config.twilioPhoneNumber || '';
 
+  const host = (request.headers['x-forwarded-host'] as string) || request.headers.host;
+  const proto = (request.headers['x-forwarded-proto'] as string) || 'https';
+  const effectiveBaseUrl = (host && !host.includes('localhost') && !host.includes('127.0.0.1'))
+    ? `${proto}://${host}`
+    : (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
+
   logger.info({ callSid, digits, from }, 'Merchant route requested');
 
   try {
@@ -130,14 +231,14 @@ export async function handleMerchantRoute(
 
     // Default fallback organization / team
     const callerId = normalizePhoneNumber(config.twilioPhoneNumber || to || '+12513571708');
-    const dialStatusUrl = `${config.baseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
+    const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
     const fallbackTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna-Neural">Thank you for calling. Connecting you to customer care.</Say>
+  <Say voice="alice">Thank you for calling. Connecting you to customer care.</Say>
   <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
     +254706499848
   </Dial>
-  <Say voice="Polly.Joanna-Neural">Please leave your name and message after the tone.</Say>
+  <Say voice="alice">Please leave your name and message after the tone.</Say>
   <Record timeout="10" maxLength="60"/>
   <Hangup/>
 </Response>`;
@@ -146,10 +247,10 @@ export async function handleMerchantRoute(
   } catch (error) {
     logger.error({ error, callSid }, 'Error in merchant routing');
     const callerId = normalizePhoneNumber(config.twilioPhoneNumber || to || '+12513571708');
-    const dialStatusUrl = `${config.baseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
+    const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna-Neural">Connecting your call. Please hold.</Say>
+  <Say voice="alice">Connecting your call. Please hold.</Say>
   <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
     +254706499848
   </Dial>
@@ -202,7 +303,7 @@ async function routeCallToOrganization(
     const merchantPhone = normalizePhoneNumber(targetPhone);
     const callerId = normalizePhoneNumber(config.twilioPhoneNumber || to || '+12513571708');
     const dialStatusUrl = `${config.baseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
-    const voiceId = org.ai_voice_id || 'Polly.Joanna-Neural';
+    const voiceId = 'alice';
 
     logger.info(
       { callSid, orgId: org.id, orgName: org.name, merchantPhone, callerId },
@@ -229,7 +330,7 @@ async function routeCallToOrganization(
     const dialStatusUrl = `${config.baseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="Polly.Joanna-Neural">Connecting you to ${escapeXml(org?.name || 'customer care')}. Please hold.</Say>
+  <Say voice="alice">Connecting you to ${escapeXml(org?.name || 'customer care')}. Please hold.</Say>
   <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
     +254706499848
   </Dial>

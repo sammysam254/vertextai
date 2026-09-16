@@ -54,7 +54,7 @@ export async function handleConversationTurn(
         .type('text/xml')
         .send(
           generateErrorTwiML({
-            voiceId: 'Polly.Joanna-Neural',
+            voiceId: 'alice',
             errorMessage: 'Thank you for calling Vertex AI. Goodbye.',
           })
         );
@@ -81,7 +81,7 @@ export async function handleConversationTurn(
         .send(
           generateTurnTwiML({
             aiReply: "I didn't catch that. How can I assist you today?",
-            voiceId: org?.ai_voice_id || 'Polly.Joanna-Neural',
+            voiceId: org?.ai_voice_id || 'alice',
             turnUrl,
             shouldPromptEscalation: callState.turnCount >= 2,
           })
@@ -131,7 +131,7 @@ export async function handleConversationTurn(
       const statusUrl = `${config.baseUrl}/api/v1/voice/status`;
       const twiml = generateEscalationTwiML({
         escalationNumber: org.escalation_phone_number,
-        voiceId: org.ai_voice_id || 'Polly.Joanna-Neural',
+        voiceId: org.ai_voice_id || 'alice',
         statusUrl,
       });
 
@@ -156,7 +156,7 @@ export async function handleConversationTurn(
     const turnUrl = `${config.baseUrl}/api/v1/voice/turn`;
     const twiml = generateTurnTwiML({
       aiReply: aiResult.reply,
-      voiceId: org?.ai_voice_id || 'Polly.Joanna-Neural',
+      voiceId: org?.ai_voice_id || 'alice',
       turnUrl,
       shouldPromptEscalation: callState.turnCount >= 3,
     });
@@ -175,7 +175,7 @@ export async function handleConversationTurn(
       .type('text/xml')
       .send(
         generateErrorTwiML({
-          voiceId: 'Polly.Joanna-Neural',
+          voiceId: 'alice',
           errorMessage: 'Thank you for calling. Our specialist will be with you shortly.',
         })
       );
