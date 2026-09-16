@@ -23,7 +23,6 @@ export async function voiceRoutes(app: FastifyInstance) {
 
   // Voice Webhook routes (Support both POST and GET for all Twilio webhook types)
   app.all('/incoming', handleIncomingCall);
-  app.all('/browser-call', handleIncomingCall);
   app.all('/call', handleIncomingCall);
 
   // 6-Digit Merchant Code Routing

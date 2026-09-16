@@ -14,7 +14,7 @@ const nextConfig = {
   },
   // Proxy API requests to backend on port 5050 inside the container
   async rewrites() {
-    const backendHost = process.env.BACKEND_INTERNAL_URL || process.env.BACKEND_HOST || 'http://localhost:5050';
+    const backendHost = process.env.BACKEND_INTERNAL_URL || process.env.BACKEND_HOST || 'http://127.0.0.1:5050';
     return [
       {
         source: '/api/:path*',

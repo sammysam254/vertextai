@@ -28,23 +28,25 @@ async function start() {
     await app.register(phoneRoutes,   { prefix: '/api/v1/phone' });
     await app.register(billingRoutes, { prefix: '/api/v1/billing' });
 
+    const listenPort = Number(process.env.PORT) || config.port || 5050;
+
     // Start listening
     await app.listen({
-      port: config.port,
+      port: listenPort,
       host: '0.0.0.0', // Listen on all interfaces (required for Docker/Render)
     });
 
     logger.info(
       {
-        port: config.port,
+        port: listenPort,
         env: config.nodeEnv,
         baseUrl: config.baseUrl,
       },
       '✓ CallPulse Backend Server started successfully'
     );
 
-    logger.info(`Server listening on http://0.0.0.0:${config.port}`);
-    logger.info(`Health check: http://0.0.0.0:${config.port}/api/v1/health`);
+    logger.info(`Server listening on http://0.0.0.0:${listenPort}`);
+    logger.info(`Health check: http://0.0.0.0:${listenPort}/api/v1/health`);
 
     // Log configuration (non-sensitive)
     logger.info(
@@ -55,21 +57,24 @@ async function start() {
       },
       'Server configuration loaded'
     );
-  } catch (error) {
-    logger.error({ error }, '✗ Failed to start server');
+  } catch (error: any) {
+    logger.error({ err: error, message: error?.message, stack: error?.stack }, `✗ Failed to start server: ${error?.message || error}`);
+    console.error('SERVER START ERROR:', error);
     process.exit(1);
   }
 }
 
 // Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  logger.fatal({ error }, 'Uncaught exception');
+process.on('uncaughtException', (error: any) => {
+  logger.fatal({ err: error, message: error?.message, stack: error?.stack }, `Uncaught exception: ${error?.message || error}`);
+  console.error('UNCAUGHT EXCEPTION:', error);
   process.exit(1);
 });
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  logger.fatal({ reason, promise }, 'Unhandled promise rejection');
+process.on('unhandledRejection', (reason: any, promise) => {
+  logger.fatal({ reason, message: reason?.message, stack: reason?.stack }, `Unhandled promise rejection: ${reason?.message || reason}`);
+  console.error('UNHANDLED REJECTION:', reason);
   process.exit(1);
 });
 
