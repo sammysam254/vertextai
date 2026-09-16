@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "tsx watch --tsconfig ./tsconfig.json src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "tsx src/server.ts",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "test": "vitest run",
@@ -29,6 +29,8 @@
     "pino": "^8.17.2",
     "pino-pretty": "^10.3.1",
     "twilio": "^4.20.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
     "ws": "^8.21.3",
     "zod": "^3.22.4"
   },
@@ -43,8 +45,6 @@
     "pg": "^8.23.0",
     "prettier": "^3.2.4",
     "supertest": "^6.3.4",
-    "tsx": "^4.7.0",
-    "typescript": "^5.3.3",
     "vitest": "^1.2.1"
   },
   "engines": {

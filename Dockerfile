@@ -12,7 +12,6 @@ COPY backend/package*.json ./
 RUN npm install
 
 COPY backend ./
-RUN npm run build
 
 # Stage 2: Build Frontend  
 FROM base AS frontend-builder
@@ -39,10 +38,11 @@ WORKDIR /app
 RUN apk add --no-cache dumb-init
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
-# Copy compiled backend dist and node_modules (runs on native Node.js)
-COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/dist ./backend/dist
+# Copy backend source, tsconfig, package.json, and node_modules (runs on tsx directly)
+COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/src ./backend/src
+COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/tsconfig.json ./backend/tsconfig.json
+COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/package.json ./backend/package.json
 COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/node_modules ./backend/node_modules
-COPY --from=backend-builder --chown=nodejs:nodejs /app/backend/package.json ./backend/
 
 # Copy Next.js standalone
 COPY --from=frontend-builder --chown=nodejs:nodejs /app/web/.next/standalone ./
@@ -51,7 +51,7 @@ COPY --from=frontend-builder --chown=nodejs:nodejs /app/web/public ./public
 
 # Create startup script that runs both
 RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'cd /app/backend && PORT=5050 node dist/server.js &' >> /app/start.sh && \
+    echo 'cd /app/backend && PORT=5050 ./node_modules/.bin/tsx src/server.ts &' >> /app/start.sh && \
     echo 'BACKEND_PID=$!' >> /app/start.sh && \
     echo 'sleep 2' >> /app/start.sh && \
     echo 'cd /app && HOSTNAME=0.0.0.0 PORT=${PORT:-3000} node server.js' >> /app/start.sh && \
