@@ -14,8 +14,9 @@ import {
   listOrganizationAgents,
   findOrCreateAgent,
 } from '@/services/database';
-import { updateCall } from '@/services/twilio/client.service';
+import { updateCall, getCallDetails } from '@/services/twilio/client.service';
 import { generateTransferTwiML } from '@/services/twilio/twiml.service';
+import { normalizePhoneNumber } from '@/lib/phone';
 
 const logger = createLogger('route:voice:transfer');
 
@@ -50,12 +51,6 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
 
   /**
    * Transfer a live call to an agent phone number.
-   *
-   * Body:
-   *   callSid       – Twilio CallSid of the live call
-   *   agentPhone    – E.164 number to dial ("+15551234567")
-   *   agentName     – optional display name (creates an agent record if new)
-   *   organizationId – org context so we can log the transfer
    */
   fastify.post<{
     Body: {
@@ -70,7 +65,7 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
       schema: {
         body: {
           type: 'object',
-          required: ['callSid', 'agentPhone', 'organizationId'],
+          required: ['callSid', 'agentPhone'],
           properties: {
             callSid:        { type: 'string' },
             agentPhone:     { type: 'string' },
@@ -83,11 +78,44 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { callSid, agentPhone, agentName, organizationId } = request.body;
 
-      logger.info({ callSid, agentPhone, organizationId }, 'Call transfer requested');
+      // Normalize the transfer target number (e.g. 0706499848 -> +254706499848)
+      const targetAgentPhone = normalizePhoneNumber(agentPhone);
 
-      // ── 1. Validate the call is still live ─────────────────────────────
-      const callState = await getCallState(callSid);
+      logger.info({ callSid, agentPhone: targetAgentPhone, organizationId }, 'Call transfer requested');
+
+      // ── 1. Validate the call is still live (cache, DB, or Twilio live) ──
+      let callState = await getCallState(callSid);
       if (!callState) {
+        const comm = await getCommunicationByTwilioSid(callSid);
+        if (comm) {
+          callState = {
+            organizationId: comm.organization_id,
+            contactId: comm.contact_id || '00000000-0000-0000-0000-000000000000',
+            communicationId: comm.id,
+            conversationContext: [],
+            turnCount: 0,
+            startTime: Date.now(),
+          };
+        } else if (callSid && callSid.startsWith('CA')) {
+          try {
+            const details = await getCallDetails({ callSid });
+            if (['queued', 'ringing', 'in-progress'].includes(details.status)) {
+              callState = {
+                organizationId: organizationId || '00000000-0000-0000-0000-000000000000',
+                contactId: '00000000-0000-0000-0000-000000000000',
+                communicationId: '00000000-0000-0000-0000-000000000000',
+                conversationContext: [],
+                turnCount: 0,
+                startTime: Date.now(),
+              };
+            }
+          } catch (e) {
+            logger.debug({ e, callSid }, 'Could not fetch live Twilio call details');
+          }
+        }
+      }
+
+      if (!callState && (!callSid || !callSid.startsWith('CA'))) {
         return reply.status(404).send({
           error: 'Not Found',
           message: 'Call not found or already ended',
@@ -96,18 +124,23 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       // ── 2. Resolve / create agent record ───────────────────────────────
-      const agent = await findOrCreateAgent({
-        organizationId,
-        phoneNumber: agentPhone,
-        name: agentName || agentPhone,
-      });
+      let agentId = '00000000-0000-0000-0000-000000000000';
+      try {
+        const agent = await findOrCreateAgent({
+          organizationId: organizationId || callState?.organizationId || '00000000-0000-0000-0000-000000000000',
+          phoneNumber: targetAgentPhone,
+          name: agentName || targetAgentPhone,
+        });
+        if (agent) agentId = agent.id;
+      } catch (err) {
+        logger.debug({ err }, 'Note creating agent for transfer');
+      }
 
       // ── 3. Build the transfer TwiML URL ────────────────────────────────
-      //   Twilio will GET/POST this URL to fetch TwiML when it redirects the call
       const twimlUrl =
         `${config.baseUrl}/api/v1/voice/transfer-twiml` +
-        `?agentPhone=${encodeURIComponent(agentPhone)}` +
-        `&agentId=${encodeURIComponent(agent.id)}` +
+        `?agentPhone=${encodeURIComponent(targetAgentPhone)}` +
+        `&agentId=${encodeURIComponent(agentId)}` +
         `&callSid=${encodeURIComponent(callSid)}`;
 
       // ── 4. Redirect the live call ───────────────────────────────────────
@@ -115,13 +148,12 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
         await updateCall({
           callSid,
           url: twimlUrl,
-          accountSid: callState ? undefined : undefined, // uses env default
         });
       } catch (err: any) {
         logger.error({ err, callSid }, 'Twilio updateCall failed');
         return reply.status(502).send({
           error: 'Bad Gateway',
-          message: 'Failed to redirect call via Twilio',
+          message: 'Failed to redirect call via Twilio: ' + (err?.message || ''),
           statusCode: 502,
         });
       }
@@ -131,7 +163,7 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
         const comm = await getCommunicationByTwilioSid(callSid);
         if (comm) {
           await updateCommunication(comm.id, {
-            transferred_to_agent_id: agent.id,
+            transferred_to_agent_id: agentId,
             transferred_at: new Date().toISOString(),
             transfer_status: 'pending',
             escalated_to_human: true,
@@ -144,12 +176,12 @@ export const transferRoutes: FastifyPluginAsync = async (fastify) => {
         logger.warn({ err, callSid }, 'Could not update communication record');
       }
 
-      logger.info({ callSid, agentPhone, agentId: agent.id }, 'Transfer initiated');
+      logger.info({ callSid, agentPhone, agentId }, 'Transfer initiated');
 
       return reply.status(200).send({
         success: true,
         message: `Transferring call to ${agentPhone}`,
-        agentId: agent.id,
+        agentId,
         agentPhone,
         transferredAt: new Date().toISOString(),
       });

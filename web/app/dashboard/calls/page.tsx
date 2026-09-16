@@ -18,33 +18,43 @@ export default async function CallsPage() {
   let calls: any[] = [];
 
   if (user) {
-    // Resolve org
+    // Resolve org membership
     const { data: membership } = await supabase
       .from('organization_members')
       .select('organization_id')
       .eq('user_id', user.id)
       .limit(1)
-      .single();
+      .maybeSingle();
 
     organizationId = membership?.organization_id ?? null;
+  }
 
-    if (organizationId) {
-      // Real call history — latest 50, all voice types
-      const { data } = await supabase
-        .from('communications')
-        .select(`
-          id, type, from_number, to_number, status,
-          duration_seconds, escalated_to_human,
-          transfer_status, created_at, completed_at,
-          contacts ( name )
-        `)
-        .eq('organization_id', organizationId)
-        .in('type', ['voice_in', 'voice_out'])
-        .order('created_at', { ascending: false })
-        .limit(50);
+  // Fallback to first organization if membership isn't linked yet
+  if (!organizationId) {
+    const { data: firstOrg } = await supabase
+      .from('organizations')
+      .select('id')
+      .limit(1)
+      .maybeSingle();
+    organizationId = firstOrg?.id ?? null;
+  }
 
-      calls = data ?? [];
-    }
+  if (organizationId) {
+    // Real call history — latest 50, all voice types
+    const { data } = await supabase
+      .from('communications')
+      .select(`
+        id, type, from_number, to_number, status,
+        duration_seconds, escalated_to_human,
+        transfer_status, created_at, completed_at,
+        contacts ( name )
+      `)
+      .eq('organization_id', organizationId)
+      .in('type', ['voice_in', 'voice_out'])
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    calls = data ?? [];
   }
 
   return (

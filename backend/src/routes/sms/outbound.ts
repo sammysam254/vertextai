@@ -7,13 +7,15 @@ import { sendSMS } from '@/services/twilio/client.service';
 import { config } from '@/lib/config';
 import { createLogger } from '@/lib/logger';
 import { normalizePhoneNumber } from '@/lib/phone';
+import { createCommunication, findOrCreateContact } from '@/services/database';
 
 const logger = createLogger('routes:sms:outbound');
+const MESSAGING_SERVICE_SID = process.env.TWILIO_MESSAGING_SERVICE_SID || 'MG984675f67f60f82d8b1d647e94841e9b';
 
 export const outboundSmsRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /api/v1/sms/outbound - Send outbound SMS
   fastify.post<{
-    Body: { to: string; body: string; from?: string };
+    Body: { to: string; body: string; from?: string; organizationId?: string };
   }>('/outbound', {
     schema: {
       body: {
@@ -23,11 +25,12 @@ export const outboundSmsRoutes: FastifyPluginAsync = async (fastify) => {
           to: { type: 'string' },
           body: { type: 'string' },
           from: { type: 'string' },
+          organizationId: { type: 'string' },
         },
       },
     },
     handler: async (request, reply) => {
-      const { to, body, from } = request.body;
+      const { to, body, from, organizationId } = request.body;
 
       if (!to || !to.trim()) {
         return reply.status(400).send({
@@ -46,7 +49,7 @@ export const outboundSmsRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const toNumber = normalizePhoneNumber(to);
-      const fromNumber = normalizePhoneNumber(from || config.twilioPhoneNumber || '');
+      const fromNumber = normalizePhoneNumber(from || config.twilioPhoneNumber || '+12513571708');
 
       if (!fromNumber) {
         return reply.status(400).send({
@@ -62,9 +65,26 @@ export const outboundSmsRoutes: FastifyPluginAsync = async (fastify) => {
         const result = await sendSMS({
           to: toNumber,
           from: fromNumber,
+          messagingServiceSid: MESSAGING_SERVICE_SID,
           body: body.trim(),
           statusCallback: `${config.baseUrl}/api/v1/sms/status`,
         });
+
+        // Record in database for inbox & history tracking
+        try {
+          const contact = await findOrCreateContact(organizationId || '', toNumber);
+          await createCommunication({
+            organizationId: organizationId || '',
+            contactId: contact?.id,
+            type: 'sms_out',
+            twilioSid: result.messageSid,
+            fromNumber,
+            toNumber,
+            status: result.status || 'sent',
+          });
+        } catch (dbErr: any) {
+          logger.warn({ dbErr: dbErr?.message }, 'Failed to record outbound SMS to DB (non-fatal)');
+        }
 
         return reply.status(200).send({
           success: true,

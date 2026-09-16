@@ -151,25 +151,47 @@ export async function hangupCall(params: {
  */
 export async function sendSMS(params: {
   to: string;
-  from: string;
+  from?: string;
   body: string;
+  messagingServiceSid?: string;
   statusCallback?: string;
   accountSid?: string;
   authToken?: string;
 }): Promise<{ messageSid: string; status: string }> {
-  const { to, from, body, statusCallback, accountSid, authToken } = params;
+  const { to, from, body, messagingServiceSid, statusCallback, accountSid, authToken } = params;
 
   try {
     const client = createTwilioClient({ accountSid, authToken });
 
-    logger.info({ to, from, bodyLength: body.length }, 'Sending SMS');
+    logger.info({ to, from, messagingServiceSid, bodyLength: body.length }, 'Sending SMS');
 
-    const message = await client.messages.create({
+    const msgPayload: any = {
       to,
-      from,
       body,
       statusCallback,
-    });
+    };
+
+    const msSid = messagingServiceSid || process.env.TWILIO_MESSAGING_SERVICE_SID;
+    if (msSid) {
+      msgPayload.messagingServiceSid = msSid;
+    } else if (from) {
+      msgPayload.from = from;
+    }
+
+    let message: any;
+    try {
+      message = await client.messages.create(msgPayload);
+    } catch (primaryErr: any) {
+      // If sending with messagingServiceSid failed, retry with direct 'from' number if provided
+      if (msgPayload.messagingServiceSid && from) {
+        logger.warn({ primaryErr: primaryErr?.message }, 'Retrying SMS with direct from number');
+        delete msgPayload.messagingServiceSid;
+        msgPayload.from = from;
+        message = await client.messages.create(msgPayload);
+      } else {
+        throw primaryErr;
+      }
+    }
 
     logger.info({ messageSid: message.sid, status: message.status }, 'SMS sent');
 
