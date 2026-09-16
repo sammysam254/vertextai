@@ -22,6 +22,8 @@ import {
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { formatPhoneNumber } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { TopUpModal } from '@/components/billing/TopUpModal';
+import { Wallet } from 'lucide-react';
 
 interface AvailableNumberItem {
   phoneNumber: string;
@@ -43,6 +45,10 @@ export default function PhoneSettingsPage() {
 
   const [copied, setCopied] = useState(false);
   const activePhoneNumber = twilioPhoneNumber || '+12513571708';
+
+  // Wallet balance & Top Up state
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false);
 
   // Search state
   const [searchCountry, setSearchCountry] = useState('US');
@@ -75,9 +81,9 @@ export default function PhoneSettingsPage() {
     return path;
   };
 
-  // Load current escalation phone
+  // Load current escalation phone & wallet balance
   useEffect(() => {
-    async function loadOrgEscalation() {
+    async function loadData() {
       if (!organizationId) return;
       try {
         const { data: org } = await supabase
@@ -89,9 +95,15 @@ export default function PhoneSettingsPage() {
         if (org?.escalation_phone_number) {
           setEscalationPhone(org.escalation_phone_number);
         }
+
+        const walletRes = await fetch(getApiEndpoint(`/api/v1/billing/wallet?organizationId=${organizationId}`));
+        if (walletRes.ok) {
+          const wData = await walletRes.json();
+          setWalletBalance(wData.balance || 0);
+        }
       } catch (e) {}
     }
-    loadOrgEscalation();
+    loadData();
   }, [organizationId, supabase]);
 
   const copyCode = () => {
@@ -143,8 +155,17 @@ export default function PhoneSettingsPage() {
       return;
     }
 
+    // STRICT WALLET GUARD: No purchase call to Twilio if insufficient funds
+    if (walletBalance < 6.15) {
+      setProvisionError(
+        `Insufficient wallet balance ($${walletBalance.toFixed(2)} available). A minimum of $6.15 USD is required ($1.15 carrier + $5.00 platform fee) to purchase this number. Please top up your wallet.`
+      );
+      setIsTopUpOpen(true);
+      return;
+    }
+
     const confirmed = window.confirm(
-      `Purchase and configure ${numberToBuy} as your dedicated business phone line? Inbound calls will ring directly to your dashboard.`
+      `Purchase and configure ${numberToBuy} as your dedicated business phone line?\n\nCost: $6.15 USD ($1.15 Twilio carrier + $5.00 platform fee).\nThis will be deducted immediately from your CallPulse wallet, and renews monthly at $6.15.`
     );
     if (!confirmed) return;
 
@@ -347,11 +368,49 @@ export default function PhoneSettingsPage() {
               <Sparkles className="h-5 w-5 text-accent-primary" />
               Provision Dedicated Twilio Number
             </h2>
-            <Badge variant="waiting">Real Twilio API</Badge>
+            <Badge variant="waiting">Twilio Carrier + Wallet</Badge>
+          </div>
+
+          {/* Wallet Balance & Monthly Pricing Transparency */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-navy-dark-elevated rounded-xl border border-navy-dark-border">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-navy-dark border border-navy-dark-border">
+                <Wallet className="h-4 w-4 text-chart-cyan" />
+              </div>
+              <div>
+                <span className="text-xs text-slate-blue-300 block">Current Wallet Balance</span>
+                <span
+                  className={`text-sm font-bold font-mono ${
+                    walletBalance >= 6.15 ? 'text-accent-success' : 'text-accent-danger'
+                  }`}
+                >
+                  ${walletBalance.toFixed(2)} USD
+                </span>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <span className="text-xs text-slate-blue-300 block">
+                Number Price:{' '}
+                <span className="font-bold text-white">$6.15 USD/month</span>
+              </span>
+              <span className="text-[11px] text-slate-blue-400 block">
+                ($1.15 Twilio carrier + $5.00 platform fee)
+              </span>
+              {walletBalance < 6.15 && (
+                <button
+                  type="button"
+                  onClick={() => setIsTopUpOpen(true)}
+                  className="mt-1 text-xs text-chart-cyan hover:underline font-semibold flex items-center gap-1 ml-auto"
+                >
+                  + Top Up Wallet (Minimum $6.15 required)
+                </button>
+              )}
+            </div>
           </div>
 
           <p className="text-xs sm:text-sm text-slate-blue-300">
-            Search live available phone numbers on Twilio and provision a dedicated number directly bound to your dashboard:
+            Search live available phone numbers on Twilio and provision a dedicated number directly bound to your dashboard. The $6.15 fee is deducted from your wallet upon provisioning and recurs monthly:
           </p>
 
           <form onSubmit={handleSearchNumbers} className="space-y-3">
@@ -426,17 +485,28 @@ export default function PhoneSettingsPage() {
                       )}
                     </div>
 
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleProvisionNumber(num.phoneNumber)}
-                      disabled={provisioningNumber !== null}
-                      isLoading={provisioningNumber === num.phoneNumber}
-                      loadingText="Purchasing..."
-                      className="h-8 px-3 bg-accent-success hover:bg-accent-success/90 text-white font-semibold text-xs"
-                    >
-                      Provision Number
-                    </Button>
+                    {walletBalance >= 6.15 ? (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleProvisionNumber(num.phoneNumber)}
+                        disabled={provisioningNumber !== null}
+                        isLoading={provisioningNumber === num.phoneNumber}
+                        loadingText="Purchasing..."
+                        className="h-8 px-3 bg-accent-success hover:bg-accent-success/90 text-white font-semibold text-xs"
+                      >
+                        Buy ($6.15)
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setIsTopUpOpen(true)}
+                        className="h-8 px-3 text-xs border-accent-danger/50 text-accent-danger hover:bg-accent-danger/10"
+                      >
+                        Top Up to Buy ($6.15)
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -444,6 +514,16 @@ export default function PhoneSettingsPage() {
           )}
         </Panel>
       </div>
+
+      {/* In-app Top-Up Modal */}
+      <TopUpModal
+        isOpen={isTopUpOpen}
+        onClose={() => setIsTopUpOpen(false)}
+        onSuccess={(newBal) => {
+          setWalletBalance(newBal);
+          setProvisionError('');
+        }}
+      />
     </div>
   );
 }

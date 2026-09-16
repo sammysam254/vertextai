@@ -149,6 +149,9 @@ export const phoneRoutes: FastifyPluginAsync = async (fastify) => {
             dedicated_phone: purchaseResult.phoneNumber,
             twilio_number_sid: purchaseResult.sid,
             provisioned_at: new Date().toISOString(),
+            monthly_number_fee: TOTAL_NUMBER_PRICE,
+            next_number_billing_date: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+            number_billing_status: 'active',
           },
         })
         .eq('id', organizationId)

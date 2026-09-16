@@ -78,6 +78,53 @@ export default function BillingPage() {
     fetchWallet();
   }, [fetchWallet]);
 
+  const [verificationBanner, setVerificationBanner] = useState<{
+    type: 'loading' | 'success' | 'error';
+    message: string;
+  } | null>(null);
+
+  // Auto-verify Paystack callback on redirect back
+  useEffect(() => {
+    if (typeof window === 'undefined' || !organizationId) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const reference = urlParams.get('reference') || urlParams.get('trxref');
+
+    if (reference) {
+      window.history.replaceState({}, '', window.location.pathname);
+      setVerificationBanner({
+        type: 'loading',
+        message: `Verifying Paystack deposit (${reference}) with payment provider...`,
+      });
+
+      fetch(getApiEndpoint('/api/v1/billing/paystack/verify'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reference, organizationId }),
+      })
+        .then(async (res) => {
+          const data = await res.json();
+          if (res.ok && data.success) {
+            setVerificationBanner({
+              type: 'success',
+              message: data.message || `Payment verified! Added $${data.amountCredited.toFixed(2)} USD to your wallet.`,
+            });
+            fetchWallet();
+          } else {
+            setVerificationBanner({
+              type: 'error',
+              message: data.message || 'Payment could not be verified by provider. No balance was added.',
+            });
+          }
+        })
+        .catch((err) => {
+          setVerificationBanner({
+            type: 'error',
+            message: err.message || 'Error communicating with verification service.',
+          });
+        });
+    }
+  }, [organizationId, fetchWallet]);
+
   const remainingFree = Math.max(0, freeMinutesLimit - freeMinutesUsed);
   const freeMinutesPercentage = Math.min(100, Math.round((freeMinutesUsed / freeMinutesLimit) * 100));
 
@@ -92,6 +139,32 @@ export default function BillingPage() {
           fetchWallet();
         }}
       />
+
+      {/* Payment Confirmation Banner */}
+      {verificationBanner && (
+        <div
+          className={`p-4 rounded-xl border flex items-center justify-between gap-3 animate-fadeIn ${
+            verificationBanner.type === 'loading'
+              ? 'bg-accent-primary/10 border-accent-primary/30 text-chart-cyan'
+              : verificationBanner.type === 'success'
+              ? 'bg-accent-success/20 border-accent-success/30 text-accent-success'
+              : 'bg-accent-danger/20 border-accent-danger/30 text-accent-danger'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {verificationBanner.type === 'loading' && <RefreshCw className="h-5 w-5 animate-spin" />}
+            {verificationBanner.type === 'success' && <ShieldCheck className="h-5 w-5 text-accent-success" />}
+            {verificationBanner.type === 'error' && <AlertCircle className="h-5 w-5 text-accent-danger" />}
+            <span className="text-sm font-medium">{verificationBanner.message}</span>
+          </div>
+          <button
+            onClick={() => setVerificationBanner(null)}
+            className="text-xs opacity-70 hover:opacity-100 hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Page Title & Refresh */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

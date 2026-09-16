@@ -84,50 +84,13 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
           throw new Error(data.message || 'Failed to initialize Paystack payment');
         }
 
-        // Check if Paystack returned an authorization URL
         if (data.authorization_url && data.authorization_url !== '#') {
-          // If simulation mode or direct redirect
-          if (data.authorization_url.includes('status=success')) {
-            // Auto-verify simulation
-            const verifyRes = await fetch(getApiEndpoint('/api/v1/billing/paystack/verify'), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                reference: data.reference,
-                organizationId,
-              }),
-            });
-            const vData = await verifyRes.json();
-            if (verifyRes.ok) {
-              setSuccessMessage(vData.message || `Successfully credited $${finalAmount.toFixed(2)} USD!`);
-              if (onSuccess) onSuccess(vData.newBalance);
-              setTimeout(() => {
-                onClose();
-              }, 1800);
-              return;
-            }
-          }
-          // Redirect to Paystack secure checkout
+          // Redirect user to Paystack's official secure payment page
           window.location.href = data.authorization_url;
           return;
         }
 
-        // Direct verification fallback
-        const verifyRes = await fetch(getApiEndpoint('/api/v1/billing/paystack/verify'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            reference: data.reference,
-            organizationId,
-          }),
-        });
-
-        const vData = await verifyRes.json();
-        if (!verifyRes.ok) throw new Error(vData.message || 'Verification failed');
-
-        setSuccessMessage(`Successfully credited $${finalAmount.toFixed(2)} USD to your wallet!`);
-        if (onSuccess) onSuccess(vData.newBalance);
-        setTimeout(() => onClose(), 1800);
+        throw new Error('Paystack authorization URL was not generated. Check PAYSTACK_SECRET_KEY in Render.');
       } else {
         // NOWPayments Crypto Checkout
         const res = await fetch(getApiEndpoint('/api/v1/billing/nowpayments/invoice'), {
@@ -146,14 +109,14 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
           throw new Error(data.message || 'Failed to generate crypto invoice');
         }
 
-        // Open crypto invoice
+        // Open crypto invoice in new window
         if (data.invoice_url && data.invoice_url !== '#') {
           window.open(data.invoice_url, '_blank');
           setSuccessMessage(
-            `Crypto invoice created! Complete your payment in the opened tab. Your wallet will credit automatically upon blockchain confirmation.`
+            `Crypto invoice #${data.id} created! Complete your payment in the opened tab. Your wallet will credit automatically once confirmed on the blockchain.`
           );
         } else {
-          setSuccessMessage(`Simulated crypto invoice generated for $${finalAmount.toFixed(2)} USD!`);
+          throw new Error('NOWPayments invoice URL was not generated. Check NOWPAYMENTS_API_KEY in Render.');
         }
       }
     } catch (err: any) {

@@ -103,6 +103,33 @@ export async function creditWallet(params: {
     throw new Error('Credit amount must be positive');
   }
 
+  // Idempotency check: prevent duplicate credits for the same payment reference
+  if (paymentReference) {
+    try {
+      const { data: existingTx } = await supabase
+        .from('wallet_transactions')
+        .select('id, status, amount')
+        .eq('payment_reference', paymentReference)
+        .eq('status', 'completed')
+        .maybeSingle();
+
+      if (existingTx) {
+        logger.warn(
+          { paymentReference, organizationId, txId: existingTx.id },
+          'Payment reference already credited; skipping duplicate balance increment'
+        );
+        const currentSummary = await getWalletSummary(organizationId);
+        return {
+          success: true,
+          newBalance: currentSummary.balance,
+          transactionId: existingTx.id,
+        };
+      }
+    } catch (checkErr) {
+      logger.debug({ checkErr }, 'Idempotency check skipped');
+    }
+  }
+
   try {
     const summary = await getWalletSummary(organizationId);
     const newBalance = parseFloat((summary.balance + amount).toFixed(4));
@@ -127,27 +154,48 @@ export async function creditWallet(params: {
         .eq('id', organizationId);
     }
 
-    // 2. Log transaction ledger
+    // 2. Log or update transaction ledger
     let transactionId: string | undefined;
     try {
-      const { data: tx, error: txErr } = await supabase
-        .from('wallet_transactions')
-        .insert({
-          organization_id: organizationId,
-          type: 'topup',
-          amount: amount,
-          currency: 'USD',
-          status: 'completed',
-          payment_gateway: paymentGateway,
-          payment_reference: paymentReference || null,
-          description,
-          metadata: { ...metadata, previousBalance: summary.balance, newBalance },
-        })
-        .select('id')
-        .maybeSingle();
+      if (paymentReference) {
+        // If a pending transaction existed for this reference, update it
+        const { data: updatedTx } = await supabase
+          .from('wallet_transactions')
+          .update({
+            status: 'completed',
+            amount: amount,
+            description,
+            metadata: { ...metadata, previousBalance: summary.balance, newBalance },
+          })
+          .eq('payment_reference', paymentReference)
+          .select('id')
+          .maybeSingle();
 
-      if (!txErr && tx) {
-        transactionId = tx.id;
+        if (updatedTx) {
+          transactionId = updatedTx.id;
+        }
+      }
+
+      if (!transactionId) {
+        const { data: tx, error: txErr } = await supabase
+          .from('wallet_transactions')
+          .insert({
+            organization_id: organizationId,
+            type: 'topup',
+            amount: amount,
+            currency: 'USD',
+            status: 'completed',
+            payment_gateway: paymentGateway,
+            payment_reference: paymentReference || null,
+            description,
+            metadata: { ...metadata, previousBalance: summary.balance, newBalance },
+          })
+          .select('id')
+          .maybeSingle();
+
+        if (!txErr && tx) {
+          transactionId = tx.id;
+        }
       }
     } catch (txEx) {
       logger.debug({ txEx }, 'Note logging wallet transaction table');
@@ -168,6 +216,181 @@ export async function creditWallet(params: {
     throw err;
   }
 }
+
+/**
+ * Record a pending deposit in the ledger (wallet balance is NOT modified yet)
+ */
+export async function recordPendingDeposit(params: {
+  organizationId: string;
+  amount: number;
+  paymentGateway: PaymentGateway;
+  paymentReference: string;
+  description: string;
+  metadata?: Record<string, any>;
+}): Promise<{ id?: string }> {
+  const { organizationId, amount, paymentGateway, paymentReference, description, metadata = {} } = params;
+
+  try {
+    const { data: tx, error } = await supabase
+      .from('wallet_transactions')
+      .insert({
+        organization_id: organizationId,
+        type: 'topup',
+        amount: amount,
+        currency: 'USD',
+        status: 'pending',
+        payment_gateway: paymentGateway,
+        payment_reference: paymentReference,
+        description,
+        metadata,
+      })
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      logger.warn({ error, paymentReference }, 'Could not record pending deposit in table');
+    }
+
+    return { id: tx?.id };
+  } catch (err) {
+    logger.error({ err, paymentReference }, 'Error recording pending deposit');
+    return {};
+  }
+}
+
+/**
+ * Confirm a pending deposit and credit the wallet balance
+ */
+export async function confirmPendingDeposit(params: {
+  paymentReference: string;
+  confirmedAmount?: number;
+  metadata?: Record<string, any>;
+}): Promise<{ success: boolean; newBalance?: number; error?: string }> {
+  const { paymentReference, confirmedAmount, metadata = {} } = params;
+
+  try {
+    // 1. Locate the pending transaction
+    const { data: tx, error } = await supabase
+      .from('wallet_transactions')
+      .select('*')
+      .eq('payment_reference', paymentReference)
+      .maybeSingle();
+
+    if (error || !tx) {
+      return { success: false, error: 'Transaction reference not found' };
+    }
+
+    // If already completed, do nothing (idempotent)
+    if (tx.status === 'completed') {
+      const summary = await getWalletSummary(tx.organization_id);
+      return { success: true, newBalance: summary.balance };
+    }
+
+    const finalAmount = confirmedAmount || tx.amount;
+    const creditRes = await creditWallet({
+      organizationId: tx.organization_id,
+      amount: finalAmount,
+      paymentGateway: tx.payment_gateway as PaymentGateway,
+      paymentReference: paymentReference,
+      description: tx.description.replace('(Pending Confirmation)', '(Confirmed)'),
+      metadata: { ...tx.metadata, ...metadata, confirmedAt: new Date().toISOString() },
+    });
+
+    return { success: true, newBalance: creditRes.newBalance };
+  } catch (err: any) {
+    logger.error({ err, paymentReference }, 'Error confirming pending deposit');
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Process monthly recurring fee deductions for dedicated numbers ($6.15/mo)
+ * Twilio carrier: $1.15 + Platform Profit: $5.00
+ */
+export async function processMonthlyNumberRenewals(): Promise<{
+  processed: number;
+  renewed: number;
+  failed: number;
+}> {
+  const MONTHLY_NUMBER_FEE = 6.15;
+  const now = new Date().toISOString();
+  let renewed = 0;
+  let failed = 0;
+
+  try {
+    // Find organizations with dedicated numbers
+    const { data: orgs, error } = await supabase
+      .from('organizations')
+      .select('id, metadata, wallet_balance, twilio_phone_number');
+
+    if (error || !orgs) return { processed: 0, renewed: 0, failed: 0 };
+
+    for (const org of orgs) {
+      const meta = org.metadata || {};
+      if (!meta.dedicated_number || !meta.next_number_billing_date) continue;
+
+      const nextBilling = new Date(meta.next_number_billing_date);
+      if (nextBilling <= new Date()) {
+        const phone = org.twilio_phone_number || meta.dedicated_phone || 'dedicated phone';
+        try {
+          // Attempt debit
+          await debitWallet({
+            organizationId: org.id,
+            amount: MONTHLY_NUMBER_FEE,
+            type: 'number_purchase',
+            description: `Monthly Renewal for Dedicated Phone (${phone}): $1.15 carrier + $5.00 platform fee`,
+            metadata: {
+              renewalMonth: new Date().toISOString().substring(0, 7),
+              phoneNumber: phone,
+            },
+          });
+
+          // Advance next billing date by 30 days
+          const nextDate = new Date();
+          nextDate.setDate(nextDate.getDate() + 30);
+
+          await supabase
+            .from('organizations')
+            .update({
+              metadata: {
+                ...meta,
+                next_number_billing_date: nextDate.toISOString(),
+                number_billing_status: 'active',
+                last_number_billed_at: now,
+              },
+            })
+            .eq('id', org.id);
+
+          renewed++;
+          logger.info({ orgId: org.id, phone }, 'Successfully renewed dedicated phone monthly fee');
+        } catch (debitErr: any) {
+          failed++;
+          logger.warn(
+            { orgId: org.id, phone, err: debitErr.message },
+            'Insufficient balance for monthly phone renewal'
+          );
+
+          // Mark as past due
+          await supabase
+            .from('organizations')
+            .update({
+              metadata: {
+                ...meta,
+                number_billing_status: 'past_due',
+              },
+            })
+            .eq('id', org.id);
+        }
+      }
+    }
+
+    return { processed: renewed + failed, renewed, failed };
+  } catch (err: any) {
+    logger.error({ err }, 'Error running monthly number renewal routine');
+    return { processed: 0, renewed, failed };
+  }
+}
+
 
 /**
  * Debit an organization wallet
