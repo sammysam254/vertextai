@@ -49,6 +49,13 @@ export function DashboardHeader() {
 
   useEffect(() => {
     fetchWallet();
+    const interval = setInterval(fetchWallet, 10000);
+    const onFocus = () => fetchWallet();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [fetchWallet]);
 
   useEffect(() => {

@@ -152,15 +152,25 @@ export async function verifyPaystackTransaction(reference: string): Promise<{
 
     // Strict confirmation check
     if (!response.ok || !resData.status || resData.data?.status !== 'success') {
+      const txStatus = resData?.data?.status || 'unconfirmed';
+      let errorMsg = `Payment status is '${txStatus}'. It has not been completed.`;
+      if (txStatus === 'abandoned') {
+        errorMsg = 'Payment was abandoned or cancelled before completing on Paystack. No funds were debited.';
+      } else if (txStatus === 'failed') {
+        errorMsg = 'Payment failed on Paystack. Please verify card/mobile money funds and try again.';
+      } else if (txStatus === 'pending') {
+        errorMsg = 'Payment is still processing on Paystack. Please allow a moment for confirmation.';
+      }
+
       logger.warn(
-        { reference, status: resData?.data?.status, message: resData?.message },
+        { reference, status: txStatus, message: resData?.message, errorMsg },
         'Paystack payment verification failed: not confirmed'
       );
       return {
         success: false,
         amountUSD: 0,
         currency: 'USD',
-        error: resData?.message || `Payment status is '${resData?.data?.status || 'unconfirmed'}'`,
+        error: errorMsg,
       };
     }
 

@@ -221,13 +221,20 @@ export default function DialerPage() {
 
   // Initiate call with direct WebRTC audio or outbound bot
   const handleCall = async () => {
-    if (!phoneNumber || isLoading) return;
+    if (!phoneNumber.trim() || isLoading) {
+      setError('Please enter a phone number to call');
+      return;
+    }
+
+    const formattedNumber = formatPhoneNumber(phoneNumber);
+    if (!formattedNumber || formattedNumber.replace(/\D/g, '').length < 8) {
+      setError('Please enter a valid phone number (e.g. 0706499848 or +254706499848)');
+      return;
+    }
 
     setIsLoading(true);
     setError('');
     setTransferMessage(null);
-
-    const formattedNumber = formatPhoneNumber(phoneNumber);
 
     // MODE 1: Direct WebRTC Browser Calling (User can talk directly with mic & speaker)
     if (directVoiceMode && device) {
@@ -271,7 +278,11 @@ export default function DialerPage() {
 
         call.on('error', (callErr: any) => {
           console.error('WebRTC Call error:', callErr);
-          setError(callErr?.message || 'WebRTC connection failed. Falling back to phone dialer.');
+          let message = callErr?.message || 'WebRTC connection failed. Falling back to phone dialer.';
+          if (callErr?.code === 31005) {
+            message = 'Connection dropped by gateway. Please verify the destination phone number and try again.';
+          }
+          setError(message);
           setIsLoading(false);
           setIsCallActive(false);
           setCurrentCall(null);

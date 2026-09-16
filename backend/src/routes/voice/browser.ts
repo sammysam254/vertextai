@@ -97,9 +97,13 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
       ? `${proto}://${host}`
       : (config.baseUrl && !config.baseUrl.includes('localhost') ? config.baseUrl : 'https://vertext.site');
 
-    let callerId = normalizePhoneNumber(
-      config.twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER || '+12513571708'
-    );
+    const validPlatformNumbers = ['+12513571708', '+18655656773'];
+    let callerId = '+12513571708';
+
+    if (config.twilioPhoneNumber && validPlatformNumbers.includes(normalizePhoneNumber(config.twilioPhoneNumber))) {
+      callerId = normalizePhoneNumber(config.twilioPhoneNumber);
+    }
+
     const normalizedTo = normalizePhoneNumber(to);
     const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
 
@@ -108,10 +112,10 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
       'Bridging browser WebRTC audio directly to recipient phone'
     );
 
-    if (!normalizedTo) {
+    if (!normalizedTo || normalizedTo.length < 8) {
       const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="alice">No destination phone number was provided. Please check the number and try again.</Say>
+  <Say voice="alice">Please enter a valid destination phone number and try again.</Say>
   <Hangup/>
 </Response>`;
       return reply.status(200).type('text/xml').send(twiml);
@@ -128,13 +132,16 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
       orgId = '00000000-0000-0000-0000-000000000000';
     }
 
-    // If organization has a dedicated phone number, use it as callerId instead of the shared platform number
+    // If organization has a dedicated verified phone number, use it as callerId
     if (orgId && orgId !== '00000000-0000-0000-0000-000000000000') {
       try {
         const { getOrganizationById } = await import('@/services/database');
         const org = await getOrganizationById(orgId);
         if (org?.twilio_phone_number) {
-          callerId = normalizePhoneNumber(org.twilio_phone_number);
+          const orgPhone = normalizePhoneNumber(org.twilio_phone_number);
+          if (validPlatformNumbers.includes(orgPhone)) {
+            callerId = orgPhone;
+          }
         }
 
         // Check if organization has free minutes or sufficient wallet balance
