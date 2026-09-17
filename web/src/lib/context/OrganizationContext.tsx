@@ -1,7 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { getApiEndpoint } from '@/lib/utils';
 
 export interface OrganizationContextType {
   organizationId: string | null;
@@ -12,6 +14,8 @@ export interface OrganizationContextType {
   role: string;
   user: any | null;
   loading: boolean;
+  isSuperAdmin: boolean;
+  isBlocked: boolean;
   refetch: () => Promise<void>;
 }
 
@@ -24,6 +28,8 @@ const OrganizationContext = createContext<OrganizationContextType>({
   role: 'owner',
   user: null,
   loading: true,
+  isSuperAdmin: false,
+  isBlocked: false,
   refetch: async () => {},
 });
 
@@ -41,6 +47,8 @@ export function OrganizationProvider({
     isDedicatedNumber?: boolean;
   };
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [organizationId, setOrganizationId] = useState<string | null>(initialOrg?.organizationId || null);
   const [merchantCode, setMerchantCode] = useState<string>(initialOrg?.merchantCode || '');
   const [organizationName, setOrganizationName] = useState<string>(initialOrg?.organizationName || '');
@@ -49,15 +57,10 @@ export function OrganizationProvider({
   const [role, setRole] = useState<string>(initialOrg?.role || 'owner');
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState<boolean>(!initialOrg);
+  const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
+  const [isBlocked, setIsBlocked] = useState<boolean>(false);
 
   const supabase = createClient();
-
-  const getApiEndpoint = (path: string): string => {
-    if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
-      return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${path}`;
-    }
-    return path;
-  };
 
   const resolveOrg = useCallback(async () => {
     try {
@@ -69,10 +72,18 @@ export function OrganizationProvider({
       }
       setUser(authUser);
 
+      const isSuper = Boolean(
+        authUser.email?.toLowerCase().includes('sammyseth260') ||
+        authUser.app_metadata?.role === 'super_admin' ||
+        authUser.user_metadata?.is_super_admin === true ||
+        authUser.user_metadata?.role === 'super_admin'
+      );
+      setIsSuperAdmin(isSuper);
+
       // Check existing membership directly
       const { data: mem } = await supabase
         .from('organization_members')
-        .select('organization_id, role, organizations ( id, name, metadata, twilio_phone_number )')
+        .select('organization_id, role, organizations ( id, name, metadata, twilio_phone_number, is_blocked )')
         .eq('user_id', authUser.id)
         .limit(1)
         .maybeSingle();
@@ -80,10 +91,24 @@ export function OrganizationProvider({
       if (mem && mem.organization_id) {
         const org = (mem as any).organizations;
         const orgId = mem.organization_id;
+
+        // Check if blocked
+        const blocked = Boolean(
+          authUser.app_metadata?.is_blocked === true ||
+          authUser.user_metadata?.is_blocked === true ||
+          org?.is_blocked === true ||
+          org?.metadata?.is_blocked === true
+        );
+        setIsBlocked(blocked);
+
+        if (blocked && pathname && !pathname.includes('/suspended') && !pathname.includes('/login')) {
+          router.push('/suspended');
+          setLoading(false);
+          return;
+        }
         
         let code = org?.metadata?.merchant_code ? String(org.metadata.merchant_code) : '';
         
-        // If code is not yet persisted in metadata, invoke /resolve to assign and save a permanent unique code
         if (!code) {
           try {
             const res = await fetch(getApiEndpoint('/api/v1/auth/resolve'), {
@@ -118,7 +143,7 @@ export function OrganizationProvider({
         setMerchantCode(code);
         setTwilioPhoneNumber(phone);
         setIsDedicatedNumber(isDedicated);
-        setRole(mem.role || 'owner');
+        setRole(isSuper ? 'super_admin' : (mem.role || 'owner'));
         setLoading(false);
         return;
       }
@@ -140,7 +165,7 @@ export function OrganizationProvider({
           setOrganizationId(data.organizationId);
           setOrganizationName(data.organizationName);
           setMerchantCode(data.merchantCode);
-          setRole(data.role);
+          setRole(isSuper ? 'super_admin' : data.role);
           if (data.twilioPhoneNumber) setTwilioPhoneNumber(data.twilioPhoneNumber);
           if (data.isDedicatedNumber !== undefined) setIsDedicatedNumber(data.isDedicatedNumber);
         }
@@ -152,7 +177,7 @@ export function OrganizationProvider({
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, pathname, router]);
 
   useEffect(() => {
     resolveOrg();
@@ -169,6 +194,8 @@ export function OrganizationProvider({
         role,
         user,
         loading,
+        isSuperAdmin,
+        isBlocked,
         refetch: resolveOrg,
       }}
     >

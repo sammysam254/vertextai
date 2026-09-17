@@ -568,6 +568,37 @@ export async function calculateCallLimit(
   maxDurationSeconds: number;
   rateInfo: VoiceCallRateInfo;
 }> {
+  // Check if organization is suspended / blocked
+  try {
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('id, is_blocked, metadata')
+      .eq('id', organizationId)
+      .maybeSingle();
+
+    const isOrgBlocked = Boolean(
+      orgData?.is_blocked === true ||
+      orgData?.metadata?.is_blocked === true
+    );
+
+    if (isOrgBlocked) {
+      const rateInfo = getCallBillingRate(destinationPhone);
+      return {
+        allowed: false,
+        reason: 'Your account is suspended. Outbound calls are disabled. Please contact support.',
+        remainingFreeMinutes: 0,
+        remainingFreeSeconds: 0,
+        balance: 0,
+        ratePerMinute: rateInfo.billedRatePerMin,
+        ratePerSecond: rateInfo.ratePerSecond,
+        maxDurationSeconds: 0,
+        rateInfo,
+      };
+    }
+  } catch (err) {
+    logger.warn({ err, organizationId }, 'Could not verify org suspension status, proceeding with wallet check');
+  }
+
   const summary = await getWalletSummary(organizationId);
   const remainingFreeMin = Math.max(0, summary.monthlyFreeMinutesLimit - summary.monthlyFreeMinutesUsed);
   const remainingFreeSeconds = Math.round(remainingFreeMin * 60);

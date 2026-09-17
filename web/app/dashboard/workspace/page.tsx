@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { createClient } from '@/lib/supabase/client';
-import { formatDuration, formatPhoneNumber, getRelativeTime } from '@/lib/utils';
+import { formatDuration, formatPhoneNumber, getRelativeTime, getApiEndpoint } from '@/lib/utils';
 import Link from 'next/link';
 
 interface QuickNote {

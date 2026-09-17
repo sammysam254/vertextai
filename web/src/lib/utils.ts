@@ -12,22 +12,30 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export const BACKEND_API_URL = 'https://vertextai-3lit.onrender.com';
+
 /**
  * Resolve full backend API URL for client and server calls
  */
 export function getApiEndpoint(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
 
-  // In the browser, using a relative path (/api/...) goes through Next.js rewrite proxy to backend port 5050
   if (typeof window !== 'undefined') {
-    return cleanPath;
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return cleanPath;
+    }
+    return `${BACKEND_API_URL}${cleanPath}`;
   }
 
-  if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost') && !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api')) {
+  if (
+    process.env.NEXT_PUBLIC_API_URL &&
+    !process.env.NEXT_PUBLIC_API_URL.includes('localhost') &&
+    !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api')
+  ) {
     return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
   }
 
-  return cleanPath;
+  return `${BACKEND_API_URL}${cleanPath}`;
 }
 
 /**

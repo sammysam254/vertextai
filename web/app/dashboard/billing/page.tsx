@@ -19,6 +19,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { useOrganization } from '@/lib/context/OrganizationContext';
+import { getApiEndpoint } from '@/lib/utils';
 import { TopUpModal } from '@/components/billing/TopUpModal';
 
 interface Transaction {
@@ -42,21 +43,6 @@ export default function BillingPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
-
-  const getApiEndpoint = (path: string): string => {
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    if (typeof window !== 'undefined') {
-      if (
-        process.env.NEXT_PUBLIC_API_URL &&
-        !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api') &&
-        !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
-      ) {
-        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
-      }
-      return cleanPath;
-    }
-    return cleanPath;
-  };
 
   const fetchWallet = useCallback(async () => {
     if (!organizationId) return;

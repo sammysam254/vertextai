@@ -31,7 +31,7 @@ import { useAgents } from '@/lib/hooks/useCalls';
 import { TopUpModal } from '@/components/billing/TopUpModal';
 
 export default function DialerPage() {
-  const { organizationId: contextOrgId, organizationName, merchantCode } = useOrganization();
+  const { organizationId: contextOrgId, organizationName, merchantCode, isBlocked } = useOrganization();
   const searchParams = useSearchParams();
   const prefillNumber = searchParams?.get('number') || '';
 
@@ -293,8 +293,12 @@ export default function DialerPage() {
     setError('');
   };
 
-  // Initiate call with direct WebRTC audio or outbound bot
   const handleCall = async () => {
+    if (isBlocked) {
+      setError('Your account is suspended. Outbound calls are disabled. Please contact support.');
+      return;
+    }
+
     if (!phoneNumber.trim() || isLoading) {
       setError('Please enter a phone number to call');
       return;

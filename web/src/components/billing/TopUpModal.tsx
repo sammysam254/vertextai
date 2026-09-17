@@ -23,6 +23,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useOrganization } from '@/lib/context/OrganizationContext';
+import { getApiEndpoint } from '@/lib/utils';
 
 interface TopUpModalProps {
   isOpen: boolean;
@@ -93,21 +94,6 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
   const presetAmounts = [10, 25, 50, 100];
   const finalAmountUSD = customAmount ? parseFloat(customAmount) || 0 : selectedAmount;
   const finalAmountKES = Math.round(finalAmountUSD * USD_TO_KES_RATE);
-
-  const getApiEndpoint = (path: string): string => {
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    if (typeof window !== 'undefined') {
-      if (
-        process.env.NEXT_PUBLIC_API_URL &&
-        !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api') &&
-        !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
-      ) {
-        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
-      }
-      return cleanPath;
-    }
-    return cleanPath;
-  };
 
   // Check Crypto status callback
   const checkCryptoStatus = useCallback(

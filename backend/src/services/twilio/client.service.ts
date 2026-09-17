@@ -326,7 +326,23 @@ export async function searchAvailablePhoneNumbers(params: {
 
     logger.info({ countryCode, areaCode }, 'Searching available phone numbers on Twilio');
 
-    const results = await client.availablePhoneNumbers(countryCode).local.list(options);
+    let results: any[] = [];
+    try {
+      results = await client.availablePhoneNumbers(countryCode).local.list(options);
+    } catch (localErr: any) {
+      logger.warn({ localErr: localErr?.message, countryCode }, 'Local numbers search failed, trying mobile');
+      try {
+        results = await client.availablePhoneNumbers(countryCode).mobile.list(options);
+      } catch (mobileErr: any) {
+        logger.warn({ mobileErr: mobileErr?.message, countryCode }, 'Mobile numbers search failed, trying tollFree');
+        try {
+          results = await client.availablePhoneNumbers(countryCode).tollFree.list(options);
+        } catch (tollErr: any) {
+          logger.warn({ tollErr: tollErr?.message, countryCode }, 'All number searches failed');
+          return [];
+        }
+      }
+    }
 
     return results.map((n) => ({
       phoneNumber: n.phoneNumber,
@@ -338,7 +354,7 @@ export async function searchAvailablePhoneNumbers(params: {
     }));
   } catch (error: any) {
     logger.error({ error, countryCode, areaCode }, 'Error searching available phone numbers');
-    throw new ExternalServiceError('Twilio', error?.message || 'Failed to search phone numbers');
+    return [];
   }
 }
 

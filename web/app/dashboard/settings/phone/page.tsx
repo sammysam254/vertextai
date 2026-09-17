@@ -20,7 +20,7 @@ import {
   PhoneCall,
 } from 'lucide-react';
 import { useOrganization } from '@/lib/context/OrganizationContext';
-import { formatPhoneNumber } from '@/lib/utils';
+import { formatPhoneNumber, getApiEndpoint } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { TopUpModal } from '@/components/billing/TopUpModal';
 import { Wallet } from 'lucide-react';
@@ -68,21 +68,6 @@ export default function PhoneSettingsPage() {
   const [escalationSaved, setEscalationSaved] = useState(false);
 
   const supabase = createClient();
-
-  const getApiEndpoint = (path: string): string => {
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    if (typeof window !== 'undefined') {
-      if (
-        process.env.NEXT_PUBLIC_API_URL &&
-        !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api') &&
-        !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
-      ) {
-        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
-      }
-      return cleanPath;
-    }
-    return cleanPath;
-  };
 
   // Load current escalation phone & wallet balance
   useEffect(() => {

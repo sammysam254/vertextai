@@ -21,8 +21,9 @@ import {
   Menu,
   X,
   Wallet,
+  ShieldAlert,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, getApiEndpoint } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
 import { createClient } from '@/lib/supabase/client';
 import { useOrganization } from '@/lib/context/OrganizationContext';
@@ -114,17 +115,19 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const { organizationId } = useOrganization();
+  const { organizationId, user, isSuperAdmin } = useOrganization();
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+
+  const isSuperAdminUser = Boolean(
+    isSuperAdmin ||
+    user?.email?.toLowerCase().includes('sammyseth260')
+  );
 
   useEffect(() => {
     if (!organizationId) return;
     const fetchBalance = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL
-          ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')
-          : '';
-        const res = await fetch(`${apiUrl}/api/v1/billing/wallet?organizationId=${organizationId}`);
+        const res = await fetch(getApiEndpoint(`/api/v1/billing/wallet?organizationId=${organizationId}`));
         if (res.ok) {
           const data = await res.json();
           setWalletBalance(typeof data.balance === 'number' ? data.balance : 0);
@@ -320,6 +323,22 @@ export function Sidebar() {
             </Link>
           </ExpandableNavItem>
         </NavGroup>
+
+        {isSuperAdminUser && (
+          <>
+            <div className="nav-separator" />
+            <NavGroup label="ADMINISTRATION">
+              <NavItem
+                href="/dashboard/admin/users"
+                icon={ShieldAlert}
+                label="USER MANAGEMENT"
+                badge="SUPER"
+                isActive={isActive('/dashboard/admin/users')}
+                onClick={() => setIsMobileOpen(false)}
+              />
+            </NavGroup>
+          </>
+        )}
       </nav>
 
       {/* Footer */}

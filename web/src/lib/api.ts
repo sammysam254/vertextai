@@ -3,8 +3,7 @@
 // ==============================================
 
 import type { ApiError } from '@/types';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050';
+import { getApiEndpoint } from './utils';
 
 export class ApiClientError extends Error {
   statusCode: number;
@@ -32,7 +31,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 export const api = {
   get: async <T>(path: string, token?: string): Promise<T> => {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(getApiEndpoint(path), {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -44,7 +43,7 @@ export const api = {
   },
   
   post: async <T>(path: string, data: any, token?: string): Promise<T> => {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(getApiEndpoint(path), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -57,7 +56,7 @@ export const api = {
   },
   
   patch: async <T>(path: string, data: any, token?: string): Promise<T> => {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(getApiEndpoint(path), {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -70,7 +69,7 @@ export const api = {
   },
   
   delete: async <T>(path: string, token?: string): Promise<T> => {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(getApiEndpoint(path), {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

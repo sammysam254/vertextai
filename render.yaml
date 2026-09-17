@@ -62,14 +62,14 @@ services:
     routes:
       - type: rewrite
         source: /api/*
-        destination: https://callpulse-api.onrender.com/api/*
+        destination: https://vertextai-3lit.onrender.com/api/*
     envVars:
       - key: NEXT_PUBLIC_SUPABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
         sync: false
       - key: NEXT_PUBLIC_API_URL
-        value: https://callpulse-api.onrender.com
+        value: https://vertextai-3lit.onrender.com
     autoDeploy: true
 
 # ============================================
