@@ -105,7 +105,6 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const normalizedTo = normalizePhoneNumber(to);
-    const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
 
     logger.info(
       { to: normalizedTo, from, callSid, callerId },
@@ -132,6 +131,40 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
       orgId = '00000000-0000-0000-0000-000000000000';
     }
 
+    // Verify wallet balance, free minutes, and destination rate
+    let maxDurationSeconds = 3600; // default 1 hour if unchecked
+    let billingReason: string | undefined;
+
+    try {
+      const { calculateCallLimit } = await import('@/services/database/wallet.service');
+      const limit = await calculateCallLimit(orgId, normalizedTo);
+
+      if (!limit.allowed) {
+        logger.warn({ orgId, normalizedTo, balance: limit.balance, rate: limit.ratePerMinute }, 'Outbound call prevented due to depleted balance');
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Your CallPulse wallet balance and monthly free minutes are exhausted. Please top up your wallet in the dashboard to make calls.</Say>
+  <Hangup/>
+</Response>`;
+        return reply.status(200).type('text/xml').send(twiml);
+      }
+
+      maxDurationSeconds = limit.maxDurationSeconds;
+      logger.info(
+        {
+          orgId,
+          normalizedTo,
+          maxDurationSeconds,
+          ratePerMinute: limit.ratePerMinute,
+          remainingFreeMinutes: limit.remainingFreeMinutes,
+          balance: limit.balance,
+        },
+        'Call authorized with telecom timeLimit'
+      );
+    } catch (e: any) {
+      logger.warn({ err: e?.message, orgId }, 'Error calculating call limit; applying safe fallback');
+    }
+
     // If organization has a dedicated verified phone number, use it as callerId
     if (orgId && orgId !== '00000000-0000-0000-0000-000000000000') {
       try {
@@ -143,23 +176,14 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
             callerId = orgPhone;
           }
         }
-
-        // Check if organization has free minutes or sufficient wallet balance
-        const { checkCanMakeCall } = await import('@/services/database/wallet.service');
-        const canCall = await checkCanMakeCall(orgId);
-        if (!canCall.allowed) {
-          logger.warn({ orgId }, 'Outbound call prevented due to depleted wallet and free minutes');
-          const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-  <Say voice="alice">Your CallPulse wallet balance and monthly free minutes are exhausted. Please top up your wallet in the dashboard to make calls.</Say>
-  <Hangup/>
-</Response>`;
-          return reply.status(200).type('text/xml').send(twiml);
-        }
       } catch (e) {
-        logger.debug({ e }, 'Note checking org dedicated phone and wallet for outbound call');
+        logger.debug({ e }, 'Note checking org dedicated phone');
       }
     }
+
+    const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(
+      callSid
+    )}&orgId=${encodeURIComponent(orgId)}&to=${encodeURIComponent(normalizedTo)}`;
 
     // Save outbound call to database
     try {
@@ -180,12 +204,13 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Directly bridge the browser's audio stream to the customer's phone!
+    // timeLimit enforces hard telecom carrier disconnection the exact second balance is exhausted
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="${escapeXml(callerId)}" timeout="35" answerOnBridge="true" action="${escapeXml(dialStatusUrl)}">
-    <Number>${escapeXml(normalizedTo)}</Number>
+  <Dial callerId="${escapeXml(callerId)}" timeout="35" timeLimit="${maxDurationSeconds}" answerOnBridge="true" action="${escapeXml(dialStatusUrl)}">
+    <Number statusCallback="${escapeXml(dialStatusUrl)}" statusCallbackEvent="completed">${escapeXml(normalizedTo)}</Number>
   </Dial>
-  <Say voice="alice">The recipient is currently unavailable. Please try again later.</Say>
+  <Say voice="alice">The call could not be connected or has ended. Goodbye.</Say>
   <Hangup/>
 </Response>`;
 

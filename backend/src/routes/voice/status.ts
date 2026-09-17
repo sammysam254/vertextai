@@ -70,7 +70,7 @@ export async function handleCallStatus(
       }
     }
 
-    // Real-time call billing: 3 free minutes monthly + 20% platform markup
+    // Real-time call billing: 3 free minutes monthly + Kenya/intl profit margin
     if (CallStatus === 'completed' && communication.organization_id && (updates.duration_seconds || 0) > 0) {
       try {
         const { billCallUsage } = await import('@/services/database/wallet.service');
@@ -78,21 +78,24 @@ export async function handleCallStatus(
           organizationId: communication.organization_id,
           durationSeconds: updates.duration_seconds,
           callSid: CallSid,
+          destinationPhone: communication.to_number,
         });
-        updates.cost_usd = billingResult.amountCharged;
+        updates.cost_usd = billingResult.totalAmountCharged;
         logger.info(
           {
             callSid: CallSid,
             orgId: communication.organization_id,
             durationSeconds: updates.duration_seconds,
+            destination: communication.to_number,
             freeMinutesApplied: billingResult.freeMinutesApplied,
             billableMinutes: billingResult.billableMinutes,
-            amountCharged: billingResult.amountCharged,
+            amountCharged: billingResult.totalAmountCharged,
+            remainingBalance: billingResult.remainingBalance,
           },
           'Call billed and deducted from wallet successfully'
         );
-      } catch (billingErr) {
-        logger.warn({ billingErr, callSid: CallSid }, 'Note processing call usage billing');
+      } catch (billingErr: any) {
+        logger.warn({ billingErr: billingErr?.message, callSid: CallSid }, 'Note processing call usage billing');
       }
     }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Panel } from '@/components/ui/Panel';
 import { Button } from '@/components/ui/Button';
 import {
@@ -18,12 +18,17 @@ import {
   Radio,
   Volume2,
   Sparkles,
+  Wallet,
+  Coins,
+  AlertTriangle,
+  PlusCircle,
 } from 'lucide-react';
 import { formatPhoneNumber, formatDuration, getApiEndpoint } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { useSearchParams } from 'next/navigation';
 import { useAgents } from '@/lib/hooks/useCalls';
+import { TopUpModal } from '@/components/billing/TopUpModal';
 
 export default function DialerPage() {
   const { organizationId: contextOrgId, organizationName, merchantCode } = useOrganization();
@@ -39,6 +44,12 @@ export default function DialerPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [organizationId, setOrganizationId] = useState<string | null>(contextOrgId);
+
+  // Live Wallet & Billing State
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [freeMinutesUsed, setFreeMinutesUsed] = useState<number>(0);
+  const [freeMinutesLimit, setFreeMinutesLimit] = useState<number>(3);
+  const [isTopUpOpen, setIsTopUpOpen] = useState(false);
 
   // WebRTC Live Browser Audio State
   const [device, setDevice] = useState<any>(null);
@@ -72,6 +83,57 @@ export default function DialerPage() {
       setPhoneNumber(prefillNumber);
     }
   }, [prefillNumber]);
+
+  const fetchWallet = useCallback(async () => {
+    const orgId = organizationId || contextOrgId;
+    if (!orgId) return;
+    try {
+      const res = await fetch(getApiEndpoint(`/api/v1/billing/wallet?organizationId=${orgId}`));
+      if (res.ok) {
+        const data = await res.json();
+        setWalletBalance(data.balance ?? 0);
+        setFreeMinutesUsed(data.monthlyFreeMinutesUsed ?? 0);
+        setFreeMinutesLimit(data.monthlyFreeMinutesLimit ?? 3);
+      }
+    } catch {}
+  }, [organizationId, contextOrgId]);
+
+  useEffect(() => {
+    fetchWallet();
+  }, [fetchWallet]);
+
+  const getDestinationRate = (phone: string) => {
+    const digits = phone.replace(/\D/g, '');
+    if (
+      digits.startsWith('254') ||
+      digits.startsWith('07') ||
+      digits.startsWith('01') ||
+      (digits.length === 9 && (digits.startsWith('7') || digits.startsWith('1')))
+    ) {
+      return {
+        country: '🇰🇪 Kenya',
+        ratePerMin: 0.3172,
+        isKenya: true,
+      };
+    }
+    if (digits.startsWith('1') && digits.length === 11) {
+      return {
+        country: '🇺🇸 United States',
+        ratePerMin: 0.040,
+        isKenya: false,
+      };
+    }
+    return {
+      country: '🌐 International',
+      ratePerMin: 0.3172,
+      isKenya: false,
+    };
+  };
+
+  const currentRate = getDestinationRate(phoneNumber);
+  const remainingFreeMin = Math.max(0, freeMinutesLimit - freeMinutesUsed);
+  const maxSecondsAllowed = (remainingFreeMin * 60) + Math.floor((walletBalance / currentRate.ratePerMin) * 60);
+  const canPlaceCall = remainingFreeMin > 0 || walletBalance >= currentRate.ratePerMin;
 
   const { agents } = useAgents(organizationId || contextOrgId, true);
 
@@ -175,7 +237,7 @@ export default function DialerPage() {
     };
   }, [isCallActive]);
 
-  // Real-time remote termination synchronization
+  // Real-time remote termination synchronization & live wallet depletion detection
   useEffect(() => {
     if (!isCallActive || !activeCallSid) return;
 
@@ -186,15 +248,25 @@ export default function DialerPage() {
         if (res.ok) {
           const data = await res.json();
           const terminalStatuses = ['completed', 'canceled', 'busy', 'no-answer', 'failed'];
+
           if (data.active === false || terminalStatuses.includes(data.status?.toLowerCase())) {
             setIsCallActive(false);
             setActiveCallSid('');
             setCurrentCall(null);
-            setCallStatus(`Call ended (${data.status || 'remote hung up'})`);
+            const endMsg = data.disconnectedDueToBalance || data.reason
+              ? (data.reason || 'Call ended: Wallet balance depleted')
+              : `Call ended (${data.status || 'remote hung up'})`;
+            setCallStatus(endMsg);
+            if (data.disconnectedDueToBalance) {
+              setError(data.reason || 'Call disconnected: Your wallet balance was depleted. Please top up.');
+            }
+            fetchWallet();
             setTimeout(() => {
               setCallStatus('');
               setPhoneNumber('');
-            }, 3000);
+            }, 4000);
+          } else if (data.balance !== undefined) {
+            setWalletBalance(data.balance);
           }
         }
       } catch {
@@ -203,7 +275,7 @@ export default function DialerPage() {
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [isCallActive, activeCallSid]);
+  }, [isCallActive, activeCallSid, fetchWallet]);
 
   const handleDigit = (digit: string) => {
     setPhoneNumber((prev) => prev + digit);
@@ -441,7 +513,7 @@ export default function DialerPage() {
   return (
     <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1">Web Dialer</h1>
           <p className="text-xs sm:text-sm text-slate-blue-400">
@@ -449,8 +521,28 @@ export default function DialerPage() {
           </p>
         </div>
 
-        {/* Audio Mode Badge */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        {/* Wallet Balance & Audio Mode Controls */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {/* Wallet Balance Pill */}
+          <div className="flex items-center gap-2 py-1 px-3 bg-navy-dark-elevated border border-navy-dark-border rounded-lg text-xs shadow-sm">
+            <div className="flex items-center gap-1.5 text-slate-blue-300">
+              <Wallet className="h-3.5 w-3.5 text-chart-cyan" />
+              <span>Wallet:</span>
+              <strong className="text-white font-mono font-bold">${walletBalance.toFixed(2)}</strong>
+            </div>
+            <span className="text-slate-blue-500">•</span>
+            <span className="text-slate-blue-300">
+              Free: <strong className="text-accent-success font-mono">{remainingFreeMin}m</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsTopUpOpen(true)}
+              className="h-6 px-2 text-[10px] font-bold bg-accent-primary hover:bg-accent-primary/90 text-white rounded flex items-center gap-1 transition-colors"
+            >
+              <PlusCircle className="h-3 w-3" /> Top Up
+            </button>
+          </div>
+
           <button
             onClick={() => setDirectVoiceMode(!directVoiceMode)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
@@ -463,12 +555,12 @@ export default function DialerPage() {
             {directVoiceMode ? (
               <>
                 <Radio className="h-3.5 w-3.5 text-accent-primary animate-pulse" />
-                <span>Direct Voice: <strong>Browser Mic Active</strong></span>
+                <span>Direct Voice: <strong>Browser Mic</strong></span>
               </>
             ) : (
               <>
                 <Sparkles className="h-3.5 w-3.5" />
-                <span>Mode: <strong>AI Outbound Bot</strong></span>
+                <span>Mode: <strong>AI Bot</strong></span>
               </>
             )}
           </button>
@@ -542,6 +634,56 @@ export default function DialerPage() {
               )}
             </div>
 
+            {/* Destination Rate & Live Safety Preview */}
+            {phoneNumber.trim().length >= 4 && !isCallActive && (
+              <div
+                className={`p-3 rounded-lg border text-xs space-y-1.5 transition-all ${
+                  canPlaceCall
+                    ? 'bg-navy-dark-elevated border-navy-dark-border text-slate-blue-300'
+                    : 'bg-accent-danger/10 border-accent-danger/30 text-accent-danger'
+                }`}
+              >
+                <div className="flex items-center justify-between font-medium">
+                  <span className="flex items-center gap-1.5 text-white">
+                    <span>{currentRate.country}</span>
+                    <span className="text-[11px] text-chart-cyan font-mono font-bold">
+                      ${currentRate.ratePerMin.toFixed(4)}/min
+                    </span>
+                  </span>
+                  {canPlaceCall ? (
+                    <span className="text-accent-success font-mono text-[11px] font-bold">
+                      Max Duration: ~{formatDuration(maxSecondsAllowed)}
+                    </span>
+                  ) : (
+                    <span className="text-accent-danger font-bold text-[11px] flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Depleted
+                    </span>
+                  )}
+                </div>
+
+                {!canPlaceCall ? (
+                  <div className="flex items-center justify-between pt-1">
+                    <p className="text-[11px] text-accent-danger">
+                      Free minutes exhausted and balance ($0.00) is insufficient.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setIsTopUpOpen(true)}
+                      className="text-xs text-chart-cyan underline font-bold hover:text-white ml-2 shrink-0"
+                    >
+                      Top Up Now
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-blue-400">
+                    {remainingFreeMin > 0
+                      ? `${remainingFreeMin} free mins available, then $${currentRate.ratePerMin.toFixed(4)}/min from balance.`
+                      : `Billed live as you speak. Call auto-disconnects when balance reaches $0.`}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Error Message */}
             {error && (
               <p className="text-accent-danger text-xs sm:text-sm text-center p-2.5 bg-accent-danger/10 border border-accent-danger/30 rounded-md">
@@ -569,9 +711,14 @@ export default function DialerPage() {
                       Two-Way Audio Connected
                     </span>
                   </div>
-                  <span className="font-mono text-xs sm:text-sm font-bold text-white bg-accent-success/20 px-2 py-0.5 rounded">
-                    {formatDuration(callTimer)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs sm:text-sm font-bold text-white bg-accent-success/20 px-2 py-0.5 rounded">
+                      {formatDuration(callTimer)}
+                    </span>
+                    <span className="text-[11px] font-mono text-chart-cyan bg-navy-dark px-2 py-0.5 rounded border border-navy-dark-border">
+                      Bal: ${walletBalance.toFixed(2)}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Microphone & Live Audio Status Banner */}
@@ -805,6 +952,16 @@ export default function DialerPage() {
           </div>
         </Panel>
       </div>
+
+      {/* Wallet Top-Up Modal */}
+      <TopUpModal
+        isOpen={isTopUpOpen}
+        onClose={() => setIsTopUpOpen(false)}
+        onSuccess={(newBalance) => {
+          setWalletBalance(newBalance);
+          fetchWallet();
+        }}
+      />
     </div>
   );
 }

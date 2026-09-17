@@ -14,8 +14,73 @@ import type {
 const logger = createLogger('service:wallet');
 
 const MONTHLY_FREE_MINUTES_LIMIT = 3;
-const BASE_TWILIO_RATE_PER_MIN = 0.014; // $0.014 per minute (standard Twilio US voice)
-const PLATFORM_PROFIT_MARGIN = 0.20; // 20% markup
+
+/**
+ * EXACT VOICE RATE FORMULA (per user requirement):
+ * Twilio carrier charge for 49 minutes = $10.54 USD ($0.215102 / min)
+ * Required platform net profit for 49 minutes = $5.00 USD ($0.102041 / min)
+ * Total charged to user for 49 minutes = $15.54 USD ($0.317143 / min)
+ * Customer rate: $0.3172 / minute (47.44% markup)
+ */
+export const KENYA_TWILIO_CARRIER_COST_PER_MIN = 0.215102;
+export const KENYA_PLATFORM_PROFIT_PER_MIN = 0.102041;
+export const KENYA_BILLED_RATE_PER_MIN = 0.317143; // $0.317143 / min (~$0.3172/min)
+
+export const BASE_TWILIO_RATE_PER_MIN = KENYA_TWILIO_CARRIER_COST_PER_MIN;
+export const PLATFORM_PROFIT_MARGIN = 0.4744; // 47.44% markup ensures $5.00 profit per $10.54 carrier cost
+
+export interface VoiceCallRateInfo {
+  baseCarrierRatePerMin: number;
+  profitMarginPerMin: number;
+  billedRatePerMin: number;
+  country: string;
+  destination: string;
+}
+
+/**
+ * Resolve rate per minute based on destination phone number
+ */
+export function getCallBillingRate(destinationPhone?: string): VoiceCallRateInfo {
+  const cleaned = (destinationPhone || '').replace(/\D/g, '');
+
+  // Kenyan numbers: +254..., 07..., 01..., 254...
+  if (
+    cleaned.startsWith('254') ||
+    cleaned.startsWith('07') ||
+    cleaned.startsWith('01') ||
+    (cleaned.length === 9 && (cleaned.startsWith('7') || cleaned.startsWith('1')))
+  ) {
+    return {
+      baseCarrierRatePerMin: KENYA_TWILIO_CARRIER_COST_PER_MIN,
+      profitMarginPerMin: KENYA_PLATFORM_PROFIT_PER_MIN,
+      billedRatePerMin: KENYA_BILLED_RATE_PER_MIN,
+      country: 'KE',
+      destination: 'Kenya',
+    };
+  }
+
+  // Domestic US/Canada numbers (+1...)
+  if (cleaned.startsWith('1') && cleaned.length === 11) {
+    const usCarrierCost = 0.014;
+    const usProfit = 0.026;
+    return {
+      baseCarrierRatePerMin: usCarrierCost,
+      profitMarginPerMin: usProfit,
+      billedRatePerMin: usCarrierCost + usProfit, // $0.040 / min
+      country: 'US',
+      destination: 'United States',
+    };
+  }
+
+  // Default international rate matching user's profit ratio
+  return {
+    baseCarrierRatePerMin: KENYA_TWILIO_CARRIER_COST_PER_MIN,
+    profitMarginPerMin: KENYA_PLATFORM_PROFIT_PER_MIN,
+    billedRatePerMin: KENYA_BILLED_RATE_PER_MIN,
+    country: 'INTL',
+    destination: 'International',
+  };
+}
 
 /**
  * Helper to check if date belongs to the current calendar month
@@ -472,80 +537,280 @@ export async function debitWallet(params: {
 }
 
 /**
- * Check whether organization can place/receive calls based on free minutes and balance
+ * Calculate maximum call duration and verify whether organization can place a call
+ * based on free minutes, wallet balance, and destination country rate.
  */
-export async function checkCanMakeCall(organizationId: string): Promise<{
+export async function calculateCallLimit(
+  organizationId: string,
+  destinationPhone?: string
+): Promise<{
   allowed: boolean;
   reason?: string;
   remainingFreeMinutes: number;
   balance: number;
+  ratePerMinute: number;
+  maxDurationSeconds: number;
+  rateInfo: VoiceCallRateInfo;
 }> {
   const summary = await getWalletSummary(organizationId);
   const remainingFree = Math.max(0, summary.monthlyFreeMinutesLimit - summary.monthlyFreeMinutesUsed);
+  const rateInfo = getCallBillingRate(destinationPhone);
+  const ratePerMin = rateInfo.billedRatePerMin;
 
+  // Case 1: Organization has monthly free minutes remaining
   if (remainingFree > 0) {
+    const freeSeconds = remainingFree * 60;
+    const paidSeconds = Math.floor((summary.balance / ratePerMin) * 60);
+    const maxDurationSeconds = Math.max(60, freeSeconds + Math.max(0, paidSeconds));
+
     return {
       allowed: true,
       remainingFreeMinutes: remainingFree,
       balance: summary.balance,
+      ratePerMinute: ratePerMin,
+      maxDurationSeconds,
+      rateInfo,
     };
   }
 
-  // Minimum required balance to initiate a call leg (~1 minute)
-  const minRequired = BASE_TWILIO_RATE_PER_MIN * (1 + PLATFORM_PROFIT_MARGIN);
-
-  if (summary.balance >= minRequired) {
+  // Case 2: Free minutes used up, but wallet has sufficient balance for at least 1 minute
+  if (summary.balance >= ratePerMin) {
+    const paidSeconds = Math.floor((summary.balance / ratePerMin) * 60);
     return {
       allowed: true,
       remainingFreeMinutes: 0,
       balance: summary.balance,
+      ratePerMinute: ratePerMin,
+      maxDurationSeconds: Math.max(60, paidSeconds),
+      rateInfo,
     };
   }
 
+  // Case 3: Free minutes used up and balance is insufficient
   return {
     allowed: false,
-    reason: `Your monthly 3 free minutes are exhausted and your wallet balance ($${summary.balance.toFixed(2)}) is insufficient. Please top up your wallet.`,
+    reason: `Your monthly 3 free minutes are exhausted and your wallet balance ($${summary.balance.toFixed(
+      2
+    )}) is insufficient for this call to ${rateInfo.destination} ($${ratePerMin.toFixed(4)}/min). Please top up your wallet.`,
     remainingFreeMinutes: 0,
     balance: summary.balance,
+    ratePerMinute: ratePerMin,
+    maxDurationSeconds: 0,
+    rateInfo,
   };
 }
 
 /**
- * Real-time voice call billing:
- * - 3 free minutes per month
- * - Paid minutes billed at Twilio rate + 20% platform profit
+ * Backward-compatible helper checking if call is allowed
+ */
+export async function checkCanMakeCall(
+  organizationId: string,
+  destinationPhone?: string
+): Promise<{
+  allowed: boolean;
+  reason?: string;
+  remainingFreeMinutes: number;
+  balance: number;
+  maxDurationSeconds: number;
+}> {
+  const limit = await calculateCallLimit(organizationId, destinationPhone);
+  return {
+    allowed: limit.allowed,
+    reason: limit.reason,
+    remainingFreeMinutes: limit.remainingFreeMinutes,
+    balance: limit.balance,
+    maxDurationSeconds: limit.maxDurationSeconds,
+  };
+}
+
+/**
+ * Mid-call Incremental Voice Billing:
+ * Billed as user speaks minute-by-minute!
+ * If wallet balance depletes and free minutes are gone, signals shouldDisconnect = true
+ */
+export async function billIncrementalCallUsage(params: {
+  organizationId: string;
+  callSid: string;
+  elapsedSeconds: number;
+  previouslyBilledMinutes: number;
+  destinationPhone?: string;
+}): Promise<{
+  newBilledMinutes: number;
+  incrementalMinutesBilled: number;
+  amountChargedNow: number;
+  remainingBalance: number;
+  shouldDisconnect: boolean;
+  reason?: string;
+}> {
+  const { organizationId, callSid, elapsedSeconds, previouslyBilledMinutes, destinationPhone } = params;
+
+  if (elapsedSeconds <= 0) {
+    const s = await getWalletSummary(organizationId);
+    return {
+      newBilledMinutes: 0,
+      incrementalMinutesBilled: 0,
+      amountChargedNow: 0,
+      remainingBalance: s.balance,
+      shouldDisconnect: false,
+    };
+  }
+
+  const currentTotalMinutes = Math.ceil(elapsedSeconds / 60);
+  const minutesToBillNow = currentTotalMinutes - previouslyBilledMinutes;
+
+  if (minutesToBillNow <= 0) {
+    const s = await getWalletSummary(organizationId);
+    return {
+      newBilledMinutes: previouslyBilledMinutes,
+      incrementalMinutesBilled: 0,
+      amountChargedNow: 0,
+      remainingBalance: s.balance,
+      shouldDisconnect: s.balance <= 0 && (s.monthlyFreeMinutesLimit - s.monthlyFreeMinutesUsed <= 0),
+    };
+  }
+
+  const summary = await getWalletSummary(organizationId);
+  const rateInfo = getCallBillingRate(destinationPhone);
+
+  const availableFree = Math.max(0, summary.monthlyFreeMinutesLimit - summary.monthlyFreeMinutesUsed);
+  const freeToApply = Math.min(minutesToBillNow, availableFree);
+  const paidMinutesNow = minutesToBillNow - freeToApply;
+
+  // Consume free minutes if applicable
+  if (freeToApply > 0) {
+    await supabase
+      .from('organizations')
+      .update({
+        monthly_free_minutes_used: summary.monthlyFreeMinutesUsed + freeToApply,
+        last_free_minutes_reset: new Date().toISOString(),
+      })
+      .eq('id', organizationId);
+  }
+
+  const costNow = parseFloat((paidMinutesNow * rateInfo.billedRatePerMin).toFixed(4));
+  let remainingBalance = summary.balance;
+  let shouldDisconnect = false;
+  let reason: string | undefined;
+
+  if (costNow > 0) {
+    if (summary.balance < costNow) {
+      // Balance cannot cover the current minute! Disconnect immediately!
+      shouldDisconnect = true;
+      reason = `Wallet balance ($${summary.balance.toFixed(2)}) depleted during call.`;
+      // Debit whatever is left
+      if (summary.balance > 0) {
+        try {
+          const debitRes = await debitWallet({
+            organizationId,
+            amount: summary.balance,
+            type: 'call_usage',
+            description: `Voice Call to ${rateInfo.destination} (Mid-call partial debit @ $${rateInfo.billedRatePerMin.toFixed(4)}/min)`,
+            paymentReference: callSid,
+            metadata: {
+              callSid,
+              elapsedSeconds,
+              costNow,
+              ratePerMin: rateInfo.billedRatePerMin,
+              country: rateInfo.country,
+              midCallDepleted: true,
+            },
+          });
+          remainingBalance = debitRes.newBalance;
+        } catch {}
+      }
+    } else {
+      try {
+        const debitRes = await debitWallet({
+          organizationId,
+          amount: costNow,
+          type: 'call_usage',
+          description: `Voice Call to ${rateInfo.destination} (${paidMinutesNow} min @ $${rateInfo.billedRatePerMin.toFixed(4)}/min)`,
+          paymentReference: callSid,
+          metadata: {
+            callSid,
+            elapsedSeconds,
+            minutesBilled: paidMinutesNow,
+            baseCarrierRate: rateInfo.baseCarrierRatePerMin,
+            profitMargin: rateInfo.profitMarginPerMin,
+            chargedRatePerMin: rateInfo.billedRatePerMin,
+            country: rateInfo.country,
+            destinationPhone,
+          },
+        });
+        remainingBalance = debitRes.newBalance;
+        if (remainingBalance <= 0) {
+          shouldDisconnect = true;
+          reason = 'Wallet balance reached $0.00.';
+        }
+      } catch (err: any) {
+        logger.warn({ err: err.message, callSid }, 'Error executing mid-call debit');
+      }
+    }
+  }
+
+  return {
+    newBilledMinutes: currentTotalMinutes,
+    incrementalMinutesBilled: minutesToBillNow,
+    amountChargedNow: costNow,
+    remainingBalance,
+    shouldDisconnect,
+    reason,
+  };
+}
+
+/**
+ * Final Real-time Voice Call Usage Settlement:
+ * Reconciles and debits remaining usage upon call completion.
+ * Rates:
+ * - Kenya (+254 / 07...): $0.2151 Twilio carrier + $0.1021 profit = $0.3172/min ($5 profit on 49 mins)
+ * - Free minutes applied first; remainder debited from wallet.
  */
 export async function billCallUsage(params: {
   organizationId: string;
   durationSeconds: number;
   callSid: string;
+  destinationPhone?: string;
   customBaseRate?: number;
+  alreadyDebitedAmount?: number;
 }): Promise<{
   totalMinutes: number;
   freeMinutesApplied: number;
   billableMinutes: number;
-  amountCharged: number;
+  totalAmountCharged: number;
+  incrementalAmountCharged: number;
   remainingBalance: number;
 }> {
-  const { organizationId, durationSeconds, callSid, customBaseRate } = params;
+  const {
+    organizationId,
+    durationSeconds,
+    callSid,
+    destinationPhone,
+    customBaseRate,
+    alreadyDebitedAmount = 0,
+  } = params;
+
+  const summary = await getWalletSummary(organizationId);
 
   if (durationSeconds <= 0) {
-    const s = await getWalletSummary(organizationId);
     return {
       totalMinutes: 0,
       freeMinutesApplied: 0,
       billableMinutes: 0,
-      amountCharged: 0,
-      remainingBalance: s.balance,
+      totalAmountCharged: alreadyDebitedAmount,
+      incrementalAmountCharged: 0,
+      remainingBalance: summary.balance,
     };
   }
 
   const totalMinutes = Math.ceil(durationSeconds / 60);
-  const summary = await getWalletSummary(organizationId);
+  const rateInfo = getCallBillingRate(destinationPhone);
+  const billedRatePerMin = customBaseRate
+    ? customBaseRate * (1 + PLATFORM_PROFIT_MARGIN)
+    : rateInfo.billedRatePerMin;
 
   const availableFree = Math.max(0, summary.monthlyFreeMinutesLimit - summary.monthlyFreeMinutesUsed);
   const freeMinutesApplied = Math.min(totalMinutes, availableFree);
-  const billableMinutes = totalMinutes - freeMinutesApplied;
+  const billableMinutes = Math.max(0, totalMinutes - freeMinutesApplied);
 
   // Update free minutes used if any were applied
   if (freeMinutesApplied > 0) {
@@ -559,38 +824,46 @@ export async function billCallUsage(params: {
       .eq('id', organizationId);
   }
 
-  // Calculate billable cost with 20% profit margin
-  const baseRate = customBaseRate || BASE_TWILIO_RATE_PER_MIN;
-  const billedRatePerMin = baseRate * (1 + PLATFORM_PROFIT_MARGIN);
-  const amountCharged = parseFloat((billableMinutes * billedRatePerMin).toFixed(4));
+  const expectedTotalCharge = parseFloat((billableMinutes * billedRatePerMin).toFixed(4));
+  const incrementalAmountToDebit = Math.max(0, parseFloat((expectedTotalCharge - alreadyDebitedAmount).toFixed(4)));
 
   let remainingBalance = summary.balance;
 
-  if (amountCharged > 0) {
-    try {
-      const debitRes = await debitWallet({
-        organizationId,
-        amount: amountCharged,
-        type: 'call_usage',
-        description: `Voice Call (${billableMinutes} min${billableMinutes > 1 ? 's' : ''} billed @ $${billedRatePerMin.toFixed(4)}/min incl. 20% margin)`,
-        paymentReference: callSid,
-        metadata: {
-          callSid,
-          durationSeconds,
-          totalMinutes,
-          freeMinutesApplied,
-          billableMinutes,
-          baseRatePerMin: baseRate,
-          profitMargin: '20%',
-          chargedRatePerMin: billedRatePerMin,
-        },
-      });
-      remainingBalance = debitRes.newBalance;
-    } catch (debitErr: any) {
-      logger.warn(
-        { debitErr: debitErr.message, organizationId, amountCharged, callSid },
-        'Could not fully debit call usage from wallet balance'
-      );
+  if (incrementalAmountToDebit > 0) {
+    const amountToDebit = Math.min(summary.balance, incrementalAmountToDebit);
+    if (amountToDebit > 0) {
+      try {
+        const debitRes = await debitWallet({
+          organizationId,
+          amount: amountToDebit,
+          type: 'call_usage',
+          description: `Voice Call to ${rateInfo.destination} (${billableMinutes} min${
+            billableMinutes > 1 ? 's' : ''
+          } @ $${billedRatePerMin.toFixed(4)}/min)`,
+          paymentReference: callSid,
+          metadata: {
+            callSid,
+            durationSeconds,
+            totalMinutes,
+            freeMinutesApplied,
+            billableMinutes,
+            baseCarrierRate: rateInfo.baseCarrierRatePerMin,
+            profitMargin: rateInfo.profitMarginPerMin,
+            chargedRatePerMin: billedRatePerMin,
+            country: rateInfo.country,
+            destinationPhone,
+            totalCharge: expectedTotalCharge,
+            alreadyDebitedAmount,
+            finalDebit: amountToDebit,
+          },
+        });
+        remainingBalance = debitRes.newBalance;
+      } catch (debitErr: any) {
+        logger.warn(
+          { debitErr: debitErr.message, organizationId, callSid },
+          'Note processing final call usage debit'
+        );
+      }
     }
   }
 
@@ -598,20 +871,23 @@ export async function billCallUsage(params: {
     {
       organizationId,
       callSid,
+      destinationPhone,
       totalMinutes,
       freeMinutesApplied,
       billableMinutes,
-      amountCharged,
+      expectedTotalCharge,
+      alreadyDebitedAmount,
       remainingBalance,
     },
-    'Voice call usage processed'
+    'Final voice call usage settled successfully'
   );
 
   return {
     totalMinutes,
     freeMinutesApplied,
     billableMinutes,
-    amountCharged,
+    totalAmountCharged: expectedTotalCharge,
+    incrementalAmountCharged: incrementalAmountToDebit,
     remainingBalance,
   };
 }

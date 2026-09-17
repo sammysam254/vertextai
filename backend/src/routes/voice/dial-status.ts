@@ -85,11 +85,45 @@ export async function handleDialStatus(
           updates.completed_at = new Date().toISOString();
         }
 
+        // Voice call billing for dialler call legs:
+        // Automatically deducts minutes from organization wallet balance & free minutes
+        const orgIdToBill = query.orgId || comm.organization_id;
+        const durationSec = parseInt(DialCallDuration || '0', 10);
+        const destination = query.to || comm.to_number;
+
+        if (dialStatus.toLowerCase() === 'completed' && orgIdToBill && durationSec > 0) {
+          try {
+            const { billCallUsage } = await import('@/services/database/wallet.service');
+            const billingResult = await billCallUsage({
+              organizationId: orgIdToBill,
+              durationSeconds: durationSec,
+              callSid: resolvedCallSid,
+              destinationPhone: destination,
+            });
+            updates.cost_usd = billingResult.totalAmountCharged;
+            logger.info(
+              {
+                callSid: resolvedCallSid,
+                orgId: orgIdToBill,
+                destination,
+                durationSec,
+                freeMinutesApplied: billingResult.freeMinutesApplied,
+                billableMinutes: billingResult.billableMinutes,
+                amountCharged: billingResult.totalAmountCharged,
+                remainingBalance: billingResult.remainingBalance,
+              },
+              'Dialler voice call usage billed and debited from wallet'
+            );
+          } catch (billingErr: any) {
+            logger.warn({ billingErr: billingErr?.message, callSid: resolvedCallSid }, 'Error billing dial status call usage');
+          }
+        }
+
         await updateCommunication(comm.id, updates as any);
 
         logger.info(
-          { communicationId: comm.id, transferStatus, status: updates.status },
-          'Communication transfer status and call status updated'
+          { communicationId: comm.id, transferStatus, status: updates.status, costUsd: updates.cost_usd },
+          'Communication transfer status, cost, and call status updated'
         );
       }
     }

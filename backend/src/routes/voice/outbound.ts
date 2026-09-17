@@ -63,6 +63,24 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
 
       logger.info({ to: toNumber, from: fromNumber, agentName, companyName }, 'Outbound call request');
 
+      // Verify wallet balance and call authorization
+      const targetOrgId = organizationId || '00000000-0000-0000-0000-000000000000';
+      try {
+        const { calculateCallLimit } = await import('@/services/database/wallet.service');
+        const limit = await calculateCallLimit(targetOrgId, toNumber);
+        if (!limit.allowed) {
+          return reply.status(402).send({
+            error: 'Payment Required',
+            message: limit.reason || 'Your CallPulse wallet balance is insufficient to place this call.',
+            balance: limit.balance,
+            ratePerMinute: limit.ratePerMinute,
+            statusCode: 402,
+          });
+        }
+      } catch (limitErr: any) {
+        logger.debug({ limitErr: limitErr?.message }, 'Note calculating outbound call limit');
+      }
+
       try {
         const host = (request.headers['x-forwarded-host'] as string) || request.headers.host;
         const proto = (request.headers['x-forwarded-proto'] as string) || 'https';
@@ -74,7 +92,7 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
           agentName: agentName || 'Customer Specialist',
           companyName: companyName || 'Vertex AI',
           to: toNumber,
-          orgId: organizationId || '',
+          orgId: targetOrgId,
         });
 
         const twimlUrl = `${effectiveBaseUrl}/api/v1/voice/twiml/outbound?${queryParams.toString()}`;
@@ -87,7 +105,6 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         // Initialize communication and call state for every call
-        const targetOrgId = organizationId || '00000000-0000-0000-0000-000000000000';
         try {
           const contact = await findOrCreateContact(targetOrgId, toNumber);
           const comm = await createCommunication({
@@ -99,84 +116,59 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
             toNumber,
             status: result.status || 'in-progress',
           });
+
           await initializeCallState(result.callSid, targetOrgId, contact.id, comm.id);
           await setCallLatestStatus(result.callSid, result.status || 'in-progress');
-        } catch (err) {
-          logger.debug({ err }, 'Note initializing DB record for outbound call');
+        } catch (dbError) {
+          logger.error({ dbError, callSid: result.callSid }, 'Failed to save communication record');
         }
 
         return reply.status(200).send({
           success: true,
           callSid: result.callSid,
           status: result.status,
-          to: toNumber,
-          from: fromNumber,
-          agentName,
-          companyName,
+          message: 'Call initiated successfully',
         });
       } catch (error: any) {
-        logger.error({ error, to: toNumber }, 'Failed to initiate outbound call');
-
-        let message = error.message || 'Failed to initiate call';
-        if (message.includes('21215') || message.includes('not authorized to call')) {
-          message = `Twilio Error 21215: Account not authorized to call ${toNumber}. International permissions are required. Details: ${error.message}`;
-        }
-
+        logger.error({ error, to: toNumber, from: fromNumber }, 'Failed to initiate outbound call');
         return reply.status(500).send({
-          error: 'Failed to initiate call',
-          message,
+          error: 'Internal Server Error',
+          message: error.message || 'Failed to place outbound call',
           statusCode: 500,
         });
       }
     },
   });
 
-  // POST /api/v1/voice/hangup - Terminate active call immediately (from dialer or dashboard)
+  // POST /api/v1/voice/hangup - Hangup active call immediately
   fastify.post<{
-    Body: { callSid?: string; CallSid?: string };
+    Body: { callSid: string };
   }>('/hangup', async (request, reply) => {
-    const body = (request.body as any) || (request.query as any) || {};
-    const callSid = body.callSid || body.CallSid;
+    const { callSid } = request.body || {};
 
     if (!callSid) {
-      return reply.status(400).send({
-        error: 'Bad Request',
-        message: 'callSid is required to terminate call',
-        statusCode: 400,
-      });
+      return reply.status(400).send({ error: 'callSid is required' });
     }
 
-    logger.info({ callSid }, 'Received immediate call hangup command');
+    logger.info({ callSid }, 'Manual hangup requested');
 
-    // 1. Terminate call leg on Twilio (disconnects phone carrier instantly)
-    await hangupCall({ callSid });
-
-    // 2. Set terminal state in cache & clear active context
-    await setCallLatestStatus(callSid, 'completed');
-    await clearCallState(callSid);
-
-    // 3. Update communication record if found
     try {
-      const comm = await getCommunicationByTwilioSid(callSid);
-      if (comm) {
-        await updateCommunication(comm.id, {
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-        });
-      }
-    } catch (err) {
-      logger.debug({ err, callSid }, 'Note updating communication on hangup');
+      await hangupCall({ callSid });
+    } catch (err: any) {
+      logger.debug({ err: err.message, callSid }, 'Note executing carrier hangup');
     }
+
+    await clearCallState(callSid);
+    await setCallLatestStatus(callSid, 'completed');
 
     return reply.status(200).send({
       success: true,
       callSid,
-      status: 'completed',
       message: 'Call ended immediately',
     });
   });
 
-  // GET /api/v1/voice/call-status - Real-time call status poller for frontend
+  // GET /api/v1/voice/call-status - Real-time call status poller for frontend with mid-call billing & auto-disconnect
   fastify.get<{
     Querystring: { callSid: string };
   }>('/call-status', async (request, reply) => {
@@ -187,33 +179,101 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(400).send({ error: 'callSid is required' });
     }
 
+    const { getCallState, setCallState } = await import('@/services/cache');
+
     // 1. Check cached status
     const cachedStatus = await getCallLatestStatus(callSid);
+    let isActive = ['queued', 'ringing', 'in-progress'].includes(cachedStatus || '');
+
+    // Get call state to track duration and organization
+    const callState = await getCallState(callSid);
+    let durationSeconds = 0;
+    if (callState?.startTime) {
+      durationSeconds = Math.floor((Date.now() - callState.startTime) / 1000);
+    }
+
+    // If active and we have an organization, run mid-call billing check!
+    let currentBalance: number | undefined;
+    let shouldDisconnect = false;
+    let disconnectReason: string | undefined;
+
+    if (isActive && callState?.organizationId && durationSeconds > 0) {
+      try {
+        const { billIncrementalCallUsage } = await import('@/services/database/wallet.service');
+        const comm = await getCommunicationByTwilioSid(callSid);
+        const destination = comm?.to_number;
+        const prevBilled = (callState as any).previouslyBilledMinutes || 0;
+
+        const billRes = await billIncrementalCallUsage({
+          organizationId: callState.organizationId,
+          callSid,
+          elapsedSeconds: durationSeconds,
+          previouslyBilledMinutes: prevBilled,
+          destinationPhone: destination,
+        });
+
+        currentBalance = billRes.remainingBalance;
+        (callState as any).previouslyBilledMinutes = billRes.newBilledMinutes;
+        await setCallState(callSid, callState);
+
+        if (billRes.shouldDisconnect) {
+          shouldDisconnect = true;
+          disconnectReason = billRes.reason || 'Wallet balance depleted.';
+        }
+      } catch (e: any) {
+        logger.debug({ e: e?.message }, 'Mid-call billing check');
+      }
+    }
+
+    // If balance ran out, hang up immediately!
+    if (shouldDisconnect) {
+      logger.warn({ callSid, disconnectReason }, 'Disconnecting active call immediately due to depleted balance');
+      try {
+        await hangupCall({ callSid });
+      } catch (err: any) {
+        logger.debug({ err: err?.message }, 'Call hangup notice');
+      }
+      await setCallLatestStatus(callSid, 'completed');
+
+      return reply.status(200).send({
+        callSid,
+        status: 'completed',
+        active: false,
+        duration: durationSeconds,
+        balance: currentBalance || 0,
+        disconnectedDueToBalance: true,
+        reason: disconnectReason || 'Call terminated: Wallet balance depleted.',
+      });
+    }
+
     if (cachedStatus) {
-      const isActive = ['queued', 'ringing', 'in-progress'].includes(cachedStatus);
       return reply.status(200).send({
         callSid,
         status: cachedStatus,
         active: isActive,
+        duration: durationSeconds,
+        balance: currentBalance,
       });
     }
 
     // 2. Check Twilio live status
     try {
       const details = await getCallDetails({ callSid });
-      const isActive = ['queued', 'ringing', 'in-progress'].includes(details.status);
+      const liveActive = ['queued', 'ringing', 'in-progress'].includes(details.status);
       await setCallLatestStatus(callSid, details.status);
       return reply.status(200).send({
         callSid,
         status: details.status,
-        active: isActive,
-        duration: details.duration,
+        active: liveActive,
+        duration: details.duration || durationSeconds,
+        balance: currentBalance,
       });
     } catch {
       return reply.status(200).send({
         callSid,
         status: 'completed',
         active: false,
+        balance: currentBalance,
       });
     }
   });
