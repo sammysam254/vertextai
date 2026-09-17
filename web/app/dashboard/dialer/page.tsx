@@ -116,10 +116,10 @@ export default function DialerPage() {
         isKenya: true,
       };
     }
-    if (digits.startsWith('1') && digits.length === 11) {
+    if (digits.startsWith('1') && (digits.length === 11 || digits.length === 10)) {
       return {
         country: '🇺🇸 United States',
-        ratePerMin: 0.040,
+        ratePerMin: 0.0210,
         isKenya: false,
       };
     }
@@ -131,9 +131,11 @@ export default function DialerPage() {
   };
 
   const currentRate = getDestinationRate(phoneNumber);
+  const ratePerSec = currentRate.ratePerMin / 60;
   const remainingFreeMin = Math.max(0, freeMinutesLimit - freeMinutesUsed);
-  const maxSecondsAllowed = (remainingFreeMin * 60) + Math.floor((walletBalance / currentRate.ratePerMin) * 60);
-  const canPlaceCall = remainingFreeMin > 0 || walletBalance >= currentRate.ratePerMin;
+  const remainingFreeSeconds = Math.round(remainingFreeMin * 60);
+  const maxSecondsAllowed = remainingFreeSeconds + Math.floor(walletBalance / ratePerSec);
+  const canPlaceCall = remainingFreeSeconds > 0 || maxSecondsAllowed >= 5;
 
   const { agents } = useAgents(organizationId || contextOrgId, true);
 
@@ -664,7 +666,7 @@ export default function DialerPage() {
                 {!canPlaceCall ? (
                   <div className="flex items-center justify-between pt-1">
                     <p className="text-[11px] text-accent-danger">
-                      Free minutes exhausted and balance ($0.00) is insufficient.
+                      Balance is insufficient to start call.
                     </p>
                     <button
                       type="button"
@@ -676,9 +678,9 @@ export default function DialerPage() {
                   </div>
                 ) : (
                   <p className="text-[10px] text-slate-blue-400">
-                    {remainingFreeMin > 0
-                      ? `${remainingFreeMin} free mins available, then $${currentRate.ratePerMin.toFixed(4)}/min from balance.`
-                      : `Billed live as you speak. Call auto-disconnects when balance reaches $0.`}
+                    {remainingFreeSeconds > 0
+                      ? `${Math.ceil(remainingFreeSeconds / 60)} free mins available, then billed per second.`
+                      : `Billed per second • Call auto-disconnects when balance reaches $0`}
                   </p>
                 )}
               </div>

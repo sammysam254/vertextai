@@ -44,15 +44,18 @@ export default function BillingPage() {
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
 
   const getApiEndpoint = (path: string): string => {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
     if (typeof window !== 'undefined') {
-      if (process.env.NEXT_PUBLIC_API_URL) {
-        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${path}`;
+      if (
+        process.env.NEXT_PUBLIC_API_URL &&
+        !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api') &&
+        !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
+      ) {
+        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
       }
-      if (window.location.hostname.includes('vertext.site')) {
-        return `https://vertext.site${path}`;
-      }
+      return cleanPath;
     }
-    return path;
+    return cleanPath;
   };
 
   const fetchWallet = useCallback(async () => {

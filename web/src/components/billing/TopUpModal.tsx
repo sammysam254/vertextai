@@ -57,7 +57,7 @@ const USDT_NETWORKS: UsdtNetworkOption[] = [
 export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
   const { organizationId, user } = useOrganization();
 
-  const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'crypto' | 'instant'>('paystack');
+  const [paymentMethod, setPaymentMethod] = useState<'paystack' | 'crypto'>('paystack');
   const [selectedAmount, setSelectedAmount] = useState<number>(25);
   const [customAmount, setCustomAmount] = useState<string>('');
   const [selectedNetwork, setSelectedNetwork] = useState<UsdtNetwork>('TRC20');
@@ -95,15 +95,18 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
   const finalAmountKES = Math.round(finalAmountUSD * USD_TO_KES_RATE);
 
   const getApiEndpoint = (path: string): string => {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
     if (typeof window !== 'undefined') {
-      if (process.env.NEXT_PUBLIC_API_URL) {
-        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${path}`;
+      if (
+        process.env.NEXT_PUBLIC_API_URL &&
+        !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api') &&
+        !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
+      ) {
+        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
       }
-      if (window.location.hostname.includes('vertext.site')) {
-        return `https://vertext.site${path}`;
-      }
+      return cleanPath;
     }
-    return path;
+    return cleanPath;
   };
 
   // Check Crypto status callback
@@ -223,33 +226,7 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
     setSuccessMessage('');
 
     try {
-      // OPTION 1: INSTANT DEMO / TEST TOP-UP
-      if (paymentMethod === 'instant') {
-        const res = await fetch(getApiEndpoint('/api/v1/billing/wallet/deposit'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            organizationId,
-            amountUSD: finalAmountUSD,
-            method: 'fast_topup',
-            description: `Fast Top-up ($${finalAmountUSD.toFixed(2)} USD)`,
-          }),
-        });
-
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          throw new Error(data.message || 'Failed to deposit funds');
-        }
-
-        setSuccessMessage(`Success! Credited $${finalAmountUSD.toFixed(2)} USD to your wallet.`);
-        if (onSuccess) onSuccess(data.newBalance);
-        setTimeout(() => {
-          onClose();
-        }, 1800);
-        return;
-      }
-
-      // OPTION 2: PAYSTACK (Cards, M-Pesa, Mobile Money)
+      // OPTION 1: PAYSTACK (Cards, M-Pesa, Mobile Money)
       if (paymentMethod === 'paystack') {
         const res = await fetch(getApiEndpoint('/api/v1/billing/paystack/initialize'), {
           method: 'POST',
@@ -594,11 +571,11 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
               <label className="block text-xs font-semibold text-slate-blue-300 uppercase tracking-wider mb-2">
                 Select Payment Method
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('paystack')}
-                  className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
+                  className={`p-3.5 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
                     paymentMethod === 'paystack'
                       ? 'bg-accent-primary/20 border-chart-cyan shadow-sm shadow-chart-cyan/20 ring-1 ring-chart-cyan'
                       : 'bg-navy-dark-elevated border-navy-dark-border hover:border-slate-blue-400/50'
@@ -607,14 +584,14 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
                   <CreditCard
                     className={`h-5 w-5 ${paymentMethod === 'paystack' ? 'text-chart-cyan' : 'text-slate-blue-400'}`}
                   />
-                  <span className="text-xs font-bold text-white">Paystack (M-Pesa/Card)</span>
-                  <span className="text-[10px] text-slate-blue-400 font-mono">1 USD = 134 KES</span>
+                  <span className="text-xs font-bold text-white">Cards, M-Pesa &amp; Mobile Money</span>
+                  <span className="text-[10px] text-slate-blue-400 font-mono">1 USD = 134 KES • Instant confirmation</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('crypto')}
-                  className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
+                  className={`p-3.5 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
                     paymentMethod === 'crypto'
                       ? 'bg-accent-primary/20 border-chart-cyan shadow-sm shadow-chart-cyan/20 ring-1 ring-chart-cyan'
                       : 'bg-navy-dark-elevated border-navy-dark-border hover:border-slate-blue-400/50'
@@ -623,24 +600,8 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
                   <Coins
                     className={`h-5 w-5 ${paymentMethod === 'crypto' ? 'text-chart-cyan' : 'text-slate-blue-400'}`}
                   />
-                  <span className="text-xs font-bold text-white">Crypto (USDT)</span>
-                  <span className="text-[10px] text-slate-blue-400">TRC20, BEP20...</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('instant')}
-                  className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
-                    paymentMethod === 'instant'
-                      ? 'bg-accent-primary/20 border-chart-cyan shadow-sm shadow-chart-cyan/20 ring-1 ring-chart-cyan'
-                      : 'bg-navy-dark-elevated border-navy-dark-border hover:border-slate-blue-400/50'
-                  }`}
-                >
-                  <Sparkles
-                    className={`h-5 w-5 ${paymentMethod === 'instant' ? 'text-chart-cyan' : 'text-slate-blue-400'}`}
-                  />
-                  <span className="text-xs font-bold text-white">⚡ Instant Top-Up</span>
-                  <span className="text-[10px] text-slate-blue-400">Direct credit / Testing</span>
+                  <span className="text-xs font-bold text-white">Crypto (USDT Multi-Network)</span>
+                  <span className="text-[10px] text-slate-blue-400">TRC20, BEP20, Solana...</span>
                 </button>
               </div>
             </div>

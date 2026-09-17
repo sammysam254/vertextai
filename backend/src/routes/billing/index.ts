@@ -446,55 +446,7 @@ export const billingRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.status(200).send({ received: true });
   });
 
-  // POST /api/v1/billing/wallet/deposit - Direct / manual / instant wallet top-up (testing & fast deposit)
-  fastify.post<{
-    Body: {
-      organizationId: string;
-      amountUSD: number;
-      method?: string;
-      reference?: string;
-      description?: string;
-    };
-  }>('/wallet/deposit', async (request, reply) => {
-    const { organizationId, amountUSD, method = 'direct_deposit', reference, description } = request.body || {};
 
-    if (!organizationId || !amountUSD || Number(amountUSD) <= 0) {
-      return reply.status(400).send({ error: 'organizationId and positive amountUSD are required' });
-    }
-
-    try {
-      const depositRef = reference || `DEP_${Date.now()}_${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-      const desc = description || `Wallet Top-up ($${Number(amountUSD).toFixed(2)} USD via ${method})`;
-
-      const creditRes = await creditWallet({
-        organizationId,
-        amount: Number(amountUSD),
-        paymentGateway: method as any,
-        paymentReference: depositRef,
-        description: desc,
-        metadata: {
-          creditedAt: new Date().toISOString(),
-          depositMethod: method,
-        },
-      });
-
-      logger.info({ organizationId, amountUSD, newBalance: creditRes.newBalance }, 'Wallet deposited successfully');
-
-      return reply.status(200).send({
-        success: true,
-        amountCredited: Number(amountUSD),
-        newBalance: creditRes.newBalance,
-        transactionId: creditRes.transactionId,
-        message: `Successfully deposited $${Number(amountUSD).toFixed(2)} USD into wallet!`,
-      });
-    } catch (err: any) {
-      logger.error({ err, organizationId, amountUSD }, 'Failed to deposit into wallet');
-      return reply.status(500).send({
-        error: 'Failed to credit wallet',
-        message: err.message,
-      });
-    }
-  });
 
   // POST /api/v1/billing/renewals/trigger - Process monthly phone number renewals
   fastify.post('/renewals/trigger', async (request, reply) => {

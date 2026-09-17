@@ -24,7 +24,12 @@ const MONTHLY_FREE_MINUTES_LIMIT = 3;
  */
 export const KENYA_TWILIO_CARRIER_COST_PER_MIN = 0.215102;
 export const KENYA_PLATFORM_PROFIT_PER_MIN = 0.102041;
-export const KENYA_BILLED_RATE_PER_MIN = 0.317143; // $0.317143 / min (~$0.3172/min)
+export const KENYA_BILLED_RATE_PER_MIN = 0.317143; // $0.317143 / min (~$0.3172/min, $0.0052857/sec)
+
+// USA Voice Calling: Twilio carrier cost ($0.0140/min) + platform profit ($0.0070/min)
+export const USA_TWILIO_CARRIER_COST_PER_MIN = 0.0140;
+export const USA_PLATFORM_PROFIT_PER_MIN = 0.0070;
+export const USA_BILLED_RATE_PER_MIN = 0.0210; // $0.0210 / min ($0.000350/sec)
 
 export const BASE_TWILIO_RATE_PER_MIN = KENYA_TWILIO_CARRIER_COST_PER_MIN;
 export const PLATFORM_PROFIT_MARGIN = 0.4744; // 47.44% markup ensures $5.00 profit per $10.54 carrier cost
@@ -33,12 +38,15 @@ export interface VoiceCallRateInfo {
   baseCarrierRatePerMin: number;
   profitMarginPerMin: number;
   billedRatePerMin: number;
+  ratePerSecond: number;
+  carrierRatePerSecond: number;
+  profitRatePerSecond: number;
   country: string;
   destination: string;
 }
 
 /**
- * Resolve rate per minute based on destination phone number
+ * Resolve rate per minute & per second based on destination phone number
  */
 export function getCallBillingRate(destinationPhone?: string): VoiceCallRateInfo {
   const cleaned = (destinationPhone || '').replace(/\D/g, '');
@@ -54,19 +62,23 @@ export function getCallBillingRate(destinationPhone?: string): VoiceCallRateInfo
       baseCarrierRatePerMin: KENYA_TWILIO_CARRIER_COST_PER_MIN,
       profitMarginPerMin: KENYA_PLATFORM_PROFIT_PER_MIN,
       billedRatePerMin: KENYA_BILLED_RATE_PER_MIN,
+      ratePerSecond: KENYA_BILLED_RATE_PER_MIN / 60,
+      carrierRatePerSecond: KENYA_TWILIO_CARRIER_COST_PER_MIN / 60,
+      profitRatePerSecond: KENYA_PLATFORM_PROFIT_PER_MIN / 60,
       country: 'KE',
       destination: 'Kenya',
     };
   }
 
   // Domestic US/Canada numbers (+1...)
-  if (cleaned.startsWith('1') && cleaned.length === 11) {
-    const usCarrierCost = 0.014;
-    const usProfit = 0.026;
+  if (cleaned.startsWith('1') && (cleaned.length === 11 || cleaned.length === 10)) {
     return {
-      baseCarrierRatePerMin: usCarrierCost,
-      profitMarginPerMin: usProfit,
-      billedRatePerMin: usCarrierCost + usProfit, // $0.040 / min
+      baseCarrierRatePerMin: USA_TWILIO_CARRIER_COST_PER_MIN,
+      profitMarginPerMin: USA_PLATFORM_PROFIT_PER_MIN,
+      billedRatePerMin: USA_BILLED_RATE_PER_MIN,
+      ratePerSecond: USA_BILLED_RATE_PER_MIN / 60,
+      carrierRatePerSecond: USA_TWILIO_CARRIER_COST_PER_MIN / 60,
+      profitRatePerSecond: USA_PLATFORM_PROFIT_PER_MIN / 60,
       country: 'US',
       destination: 'United States',
     };
@@ -77,6 +89,9 @@ export function getCallBillingRate(destinationPhone?: string): VoiceCallRateInfo
     baseCarrierRatePerMin: KENYA_TWILIO_CARRIER_COST_PER_MIN,
     profitMarginPerMin: KENYA_PLATFORM_PROFIT_PER_MIN,
     billedRatePerMin: KENYA_BILLED_RATE_PER_MIN,
+    ratePerSecond: KENYA_BILLED_RATE_PER_MIN / 60,
+    carrierRatePerSecond: KENYA_TWILIO_CARRIER_COST_PER_MIN / 60,
+    profitRatePerSecond: KENYA_PLATFORM_PROFIT_PER_MIN / 60,
     country: 'INTL',
     destination: 'International',
   };
@@ -369,15 +384,14 @@ export async function confirmPendingDeposit(params: {
 }
 
 /**
- * Process monthly recurring fee deductions for dedicated numbers ($6.15/mo)
- * Twilio carrier: $1.15 + Platform Profit: $5.00
+ * Process monthly recurring fee deductions for dedicated numbers ($6.00/mo)
  */
 export async function processMonthlyNumberRenewals(): Promise<{
   processed: number;
   renewed: number;
   failed: number;
 }> {
-  const MONTHLY_NUMBER_FEE = 6.15;
+  const MONTHLY_NUMBER_FEE = 6.00;
   const now = new Date().toISOString();
   let renewed = 0;
   let failed = 0;
@@ -403,7 +417,7 @@ export async function processMonthlyNumberRenewals(): Promise<{
             organizationId: org.id,
             amount: MONTHLY_NUMBER_FEE,
             type: 'number_purchase',
-            description: `Monthly Renewal for Dedicated Phone (${phone}): $1.15 carrier + $5.00 platform fee`,
+            description: `Monthly Renewal for Dedicated Phone (${phone})`,
             metadata: {
               renewalMonth: new Date().toISOString().substring(0, 7),
               phoneNumber: phone,
@@ -547,54 +561,64 @@ export async function calculateCallLimit(
   allowed: boolean;
   reason?: string;
   remainingFreeMinutes: number;
+  remainingFreeSeconds: number;
   balance: number;
   ratePerMinute: number;
+  ratePerSecond: number;
   maxDurationSeconds: number;
   rateInfo: VoiceCallRateInfo;
 }> {
   const summary = await getWalletSummary(organizationId);
-  const remainingFree = Math.max(0, summary.monthlyFreeMinutesLimit - summary.monthlyFreeMinutesUsed);
+  const remainingFreeMin = Math.max(0, summary.monthlyFreeMinutesLimit - summary.monthlyFreeMinutesUsed);
+  const remainingFreeSeconds = Math.round(remainingFreeMin * 60);
   const rateInfo = getCallBillingRate(destinationPhone);
-  const ratePerMin = rateInfo.billedRatePerMin;
+  const ratePerSec = rateInfo.ratePerSecond;
 
-  // Case 1: Organization has monthly free minutes remaining
-  if (remainingFree > 0) {
-    const freeSeconds = remainingFree * 60;
-    const paidSeconds = Math.floor((summary.balance / ratePerMin) * 60);
-    const maxDurationSeconds = Math.max(60, freeSeconds + Math.max(0, paidSeconds));
+  // 1. If organization has monthly free trial seconds remaining
+  if (remainingFreeSeconds > 0) {
+    const paidSeconds = Math.floor(summary.balance / ratePerSec);
+    const maxDurationSeconds = Math.max(30, remainingFreeSeconds + Math.max(0, paidSeconds));
 
     return {
       allowed: true,
-      remainingFreeMinutes: remainingFree,
+      remainingFreeMinutes: Number((remainingFreeSeconds / 60).toFixed(2)),
+      remainingFreeSeconds,
       balance: summary.balance,
-      ratePerMinute: ratePerMin,
+      ratePerMinute: rateInfo.billedRatePerMin,
+      ratePerSecond: ratePerSec,
       maxDurationSeconds,
       rateInfo,
     };
   }
 
-  // Case 2: Free minutes used up, but wallet has sufficient balance for at least 1 minute
-  if (summary.balance >= ratePerMin) {
-    const paidSeconds = Math.floor((summary.balance / ratePerMin) * 60);
-    return {
-      allowed: true,
-      remainingFreeMinutes: 0,
-      balance: summary.balance,
-      ratePerMinute: ratePerMin,
-      maxDurationSeconds: Math.max(60, paidSeconds),
-      rateInfo,
-    };
+  // 2. If free minutes are used up, check if wallet has balance for at least 5 seconds
+  if (summary.balance >= ratePerSec) {
+    const paidSeconds = Math.floor(summary.balance / ratePerSec);
+    if (paidSeconds >= 5) {
+      return {
+        allowed: true,
+        remainingFreeMinutes: 0,
+        remainingFreeSeconds: 0,
+        balance: summary.balance,
+        ratePerMinute: rateInfo.billedRatePerMin,
+        ratePerSecond: ratePerSec,
+        maxDurationSeconds: paidSeconds,
+        rateInfo,
+      };
+    }
   }
 
-  // Case 3: Free minutes used up and balance is insufficient
+  // 3. Free minutes used up and balance is insufficient
   return {
     allowed: false,
-    reason: `Your monthly 3 free minutes are exhausted and your wallet balance ($${summary.balance.toFixed(
+    reason: `Your wallet balance ($${summary.balance.toFixed(
       2
-    )}) is insufficient for this call to ${rateInfo.destination} ($${ratePerMin.toFixed(4)}/min). Please top up your wallet.`,
+    )}) is insufficient for this call to ${rateInfo.destination}. Please top up your wallet.`,
     remainingFreeMinutes: 0,
+    remainingFreeSeconds: 0,
     balance: summary.balance,
-    ratePerMinute: ratePerMin,
+    ratePerMinute: rateInfo.billedRatePerMin,
+    ratePerSecond: ratePerSec,
     maxDurationSeconds: 0,
     rateInfo,
   };
@@ -625,29 +649,40 @@ export async function checkCanMakeCall(
 
 /**
  * Mid-call Incremental Voice Billing:
- * Billed as user speaks minute-by-minute!
- * If wallet balance depletes and free minutes are gone, signals shouldDisconnect = true
+ * Billed in REAL-TIME seconds as the user speaks!
+ * Deducts ONLY what is used down to the exact second.
+ * If wallet balance depletes and free trial is exhausted, signals shouldDisconnect = true
  */
 export async function billIncrementalCallUsage(params: {
   organizationId: string;
   callSid: string;
   elapsedSeconds: number;
-  previouslyBilledMinutes: number;
+  previouslyBilledSeconds?: number;
+  previouslyBilledMinutes?: number;
   destinationPhone?: string;
 }): Promise<{
+  newBilledSeconds: number;
   newBilledMinutes: number;
+  incrementalSecondsBilled: number;
   incrementalMinutesBilled: number;
   amountChargedNow: number;
   remainingBalance: number;
   shouldDisconnect: boolean;
   reason?: string;
 }> {
-  const { organizationId, callSid, elapsedSeconds, previouslyBilledMinutes, destinationPhone } = params;
+  const { organizationId, callSid, elapsedSeconds, destinationPhone } = params;
+
+  const prevSeconds =
+    params.previouslyBilledSeconds !== undefined
+      ? params.previouslyBilledSeconds
+      : (params.previouslyBilledMinutes ?? 0) * 60;
 
   if (elapsedSeconds <= 0) {
     const s = await getWalletSummary(organizationId);
     return {
+      newBilledSeconds: 0,
       newBilledMinutes: 0,
+      incrementalSecondsBilled: 0,
       incrementalMinutesBilled: 0,
       amountChargedNow: 0,
       remainingBalance: s.balance,
@@ -655,62 +690,67 @@ export async function billIncrementalCallUsage(params: {
     };
   }
 
-  const currentTotalMinutes = Math.ceil(elapsedSeconds / 60);
-  const minutesToBillNow = currentTotalMinutes - previouslyBilledMinutes;
+  const secondsToBillNow = Math.max(0, elapsedSeconds - prevSeconds);
 
-  if (minutesToBillNow <= 0) {
+  if (secondsToBillNow <= 0) {
     const s = await getWalletSummary(organizationId);
+    const freeSec = Math.max(0, (s.monthlyFreeMinutesLimit - s.monthlyFreeMinutesUsed) * 60);
     return {
-      newBilledMinutes: previouslyBilledMinutes,
+      newBilledSeconds: prevSeconds,
+      newBilledMinutes: Math.ceil(prevSeconds / 60),
+      incrementalSecondsBilled: 0,
       incrementalMinutesBilled: 0,
       amountChargedNow: 0,
       remainingBalance: s.balance,
-      shouldDisconnect: s.balance <= 0 && (s.monthlyFreeMinutesLimit - s.monthlyFreeMinutesUsed <= 0),
+      shouldDisconnect: s.balance <= 0 && freeSec <= 0,
     };
   }
 
   const summary = await getWalletSummary(organizationId);
   const rateInfo = getCallBillingRate(destinationPhone);
 
-  const availableFree = Math.max(0, summary.monthlyFreeMinutesLimit - summary.monthlyFreeMinutesUsed);
-  const freeToApply = Math.min(minutesToBillNow, availableFree);
-  const paidMinutesNow = minutesToBillNow - freeToApply;
+  const availableFreeSeconds = Math.max(0, (summary.monthlyFreeMinutesLimit - summary.monthlyFreeMinutesUsed) * 60);
+  const freeSecondsToApply = Math.min(secondsToBillNow, availableFreeSeconds);
+  const paidSecondsNow = Math.max(0, secondsToBillNow - freeSecondsToApply);
 
-  // Consume free minutes if applicable
-  if (freeToApply > 0) {
+  // Consume free seconds proportionally
+  if (freeSecondsToApply > 0) {
+    const updatedFreeMinutesUsed = Number(
+      (summary.monthlyFreeMinutesUsed + freeSecondsToApply / 60).toFixed(4)
+    );
     await supabase
       .from('organizations')
       .update({
-        monthly_free_minutes_used: summary.monthlyFreeMinutesUsed + freeToApply,
+        monthly_free_minutes_used: updatedFreeMinutesUsed,
         last_free_minutes_reset: new Date().toISOString(),
       })
       .eq('id', organizationId);
   }
 
-  const costNow = parseFloat((paidMinutesNow * rateInfo.billedRatePerMin).toFixed(4));
+  const costNow = parseFloat((paidSecondsNow * rateInfo.ratePerSecond).toFixed(4));
   let remainingBalance = summary.balance;
   let shouldDisconnect = false;
   let reason: string | undefined;
 
   if (costNow > 0) {
     if (summary.balance < costNow) {
-      // Balance cannot cover the current minute! Disconnect immediately!
+      // Balance cannot cover the current seconds! Disconnect immediately!
       shouldDisconnect = true;
-      reason = `Wallet balance ($${summary.balance.toFixed(2)}) depleted during call.`;
-      // Debit whatever is left
+      reason = 'Wallet balance depleted.';
+
       if (summary.balance > 0) {
         try {
           const debitRes = await debitWallet({
             organizationId,
             amount: summary.balance,
             type: 'call_usage',
-            description: `Voice Call to ${rateInfo.destination} (Mid-call partial debit @ $${rateInfo.billedRatePerMin.toFixed(4)}/min)`,
+            description: `Voice Call to ${rateInfo.destination}`,
             paymentReference: callSid,
             metadata: {
               callSid,
               elapsedSeconds,
-              costNow,
-              ratePerMin: rateInfo.billedRatePerMin,
+              paidSecondsNow,
+              ratePerSecond: rateInfo.ratePerSecond,
               country: rateInfo.country,
               midCallDepleted: true,
             },
@@ -724,15 +764,13 @@ export async function billIncrementalCallUsage(params: {
           organizationId,
           amount: costNow,
           type: 'call_usage',
-          description: `Voice Call to ${rateInfo.destination} (${paidMinutesNow} min @ $${rateInfo.billedRatePerMin.toFixed(4)}/min)`,
+          description: `Voice Call to ${rateInfo.destination}`,
           paymentReference: callSid,
           metadata: {
             callSid,
             elapsedSeconds,
-            minutesBilled: paidMinutesNow,
-            baseCarrierRate: rateInfo.baseCarrierRatePerMin,
-            profitMargin: rateInfo.profitMarginPerMin,
-            chargedRatePerMin: rateInfo.billedRatePerMin,
+            paidSeconds: paidSecondsNow,
+            ratePerSecond: rateInfo.ratePerSecond,
             country: rateInfo.country,
             destinationPhone,
           },
@@ -740,7 +778,7 @@ export async function billIncrementalCallUsage(params: {
         remainingBalance = debitRes.newBalance;
         if (remainingBalance <= 0) {
           shouldDisconnect = true;
-          reason = 'Wallet balance reached $0.00.';
+          reason = 'Wallet balance depleted.';
         }
       } catch (err: any) {
         logger.warn({ err: err.message, callSid }, 'Error executing mid-call debit');
@@ -749,8 +787,10 @@ export async function billIncrementalCallUsage(params: {
   }
 
   return {
-    newBilledMinutes: currentTotalMinutes,
-    incrementalMinutesBilled: minutesToBillNow,
+    newBilledSeconds: elapsedSeconds,
+    newBilledMinutes: Math.ceil(elapsedSeconds / 60),
+    incrementalSecondsBilled: secondsToBillNow,
+    incrementalMinutesBilled: Number((secondsToBillNow / 60).toFixed(2)),
     amountChargedNow: costNow,
     remainingBalance,
     shouldDisconnect,
@@ -760,10 +800,8 @@ export async function billIncrementalCallUsage(params: {
 
 /**
  * Final Real-time Voice Call Usage Settlement:
- * Reconciles and debits remaining usage upon call completion.
- * Rates:
- * - Kenya (+254 / 07...): $0.2151 Twilio carrier + $0.1021 profit = $0.3172/min ($5 profit on 49 mins)
- * - Free minutes applied first; remainder debited from wallet.
+ * Billed in exact seconds! Only deducts what was actually used.
+ * Deducts pro-rated: (durationSeconds - freeSecondsApplied) * ratePerSecond minus any already-debited amount.
  */
 export async function billCallUsage(params: {
   organizationId: string;
@@ -771,10 +809,14 @@ export async function billCallUsage(params: {
   callSid: string;
   destinationPhone?: string;
   customBaseRate?: number;
+  carrierCost?: number;
   alreadyDebitedAmount?: number;
 }): Promise<{
+  totalDurationSeconds: number;
   totalMinutes: number;
+  freeSecondsApplied: number;
   freeMinutesApplied: number;
+  billableSeconds: number;
   billableMinutes: number;
   totalAmountCharged: number;
   incrementalAmountCharged: number;
@@ -793,8 +835,11 @@ export async function billCallUsage(params: {
 
   if (durationSeconds <= 0) {
     return {
+      totalDurationSeconds: 0,
       totalMinutes: 0,
+      freeSecondsApplied: 0,
       freeMinutesApplied: 0,
+      billableSeconds: 0,
       billableMinutes: 0,
       totalAmountCharged: alreadyDebitedAmount,
       incrementalAmountCharged: 0,
@@ -802,29 +847,31 @@ export async function billCallUsage(params: {
     };
   }
 
-  const totalMinutes = Math.ceil(durationSeconds / 60);
   const rateInfo = getCallBillingRate(destinationPhone);
-  const billedRatePerMin = customBaseRate
-    ? customBaseRate * (1 + PLATFORM_PROFIT_MARGIN)
-    : rateInfo.billedRatePerMin;
+  const ratePerSecond = customBaseRate
+    ? (customBaseRate * (1 + PLATFORM_PROFIT_MARGIN)) / 60
+    : rateInfo.ratePerSecond;
 
-  const availableFree = Math.max(0, summary.monthlyFreeMinutesLimit - summary.monthlyFreeMinutesUsed);
-  const freeMinutesApplied = Math.min(totalMinutes, availableFree);
-  const billableMinutes = Math.max(0, totalMinutes - freeMinutesApplied);
+  const availableFreeSeconds = Math.max(0, (summary.monthlyFreeMinutesLimit - summary.monthlyFreeMinutesUsed) * 60);
+  const freeSecondsApplied = Math.min(durationSeconds, availableFreeSeconds);
+  const billableSeconds = Math.max(0, durationSeconds - freeSecondsApplied);
 
   // Update free minutes used if any were applied
-  if (freeMinutesApplied > 0) {
-    const updatedFreeUsed = summary.monthlyFreeMinutesUsed + freeMinutesApplied;
+  if (freeSecondsApplied > 0) {
+    const updatedFreeMinutesUsed = Number(
+      (summary.monthlyFreeMinutesUsed + freeSecondsApplied / 60).toFixed(4)
+    );
     await supabase
       .from('organizations')
       .update({
-        monthly_free_minutes_used: updatedFreeUsed,
+        monthly_free_minutes_used: updatedFreeMinutesUsed,
         last_free_minutes_reset: new Date().toISOString(),
       })
       .eq('id', organizationId);
   }
 
-  const expectedTotalCharge = parseFloat((billableMinutes * billedRatePerMin).toFixed(4));
+  // Exact second-by-second charge:
+  const expectedTotalCharge = parseFloat((billableSeconds * ratePerSecond).toFixed(4));
   const incrementalAmountToDebit = Math.max(0, parseFloat((expectedTotalCharge - alreadyDebitedAmount).toFixed(4)));
 
   let remainingBalance = summary.balance;
@@ -837,19 +884,14 @@ export async function billCallUsage(params: {
           organizationId,
           amount: amountToDebit,
           type: 'call_usage',
-          description: `Voice Call to ${rateInfo.destination} (${billableMinutes} min${
-            billableMinutes > 1 ? 's' : ''
-          } @ $${billedRatePerMin.toFixed(4)}/min)`,
+          description: `Voice Call to ${rateInfo.destination} (${durationSeconds}s)`,
           paymentReference: callSid,
           metadata: {
             callSid,
             durationSeconds,
-            totalMinutes,
-            freeMinutesApplied,
-            billableMinutes,
-            baseCarrierRate: rateInfo.baseCarrierRatePerMin,
-            profitMargin: rateInfo.profitMarginPerMin,
-            chargedRatePerMin: billedRatePerMin,
+            freeSecondsApplied,
+            billableSeconds,
+            ratePerSecond,
             country: rateInfo.country,
             destinationPhone,
             totalCharge: expectedTotalCharge,
@@ -872,20 +914,24 @@ export async function billCallUsage(params: {
       organizationId,
       callSid,
       destinationPhone,
-      totalMinutes,
-      freeMinutesApplied,
-      billableMinutes,
+      durationSeconds,
+      freeSecondsApplied,
+      billableSeconds,
       expectedTotalCharge,
       alreadyDebitedAmount,
+      incrementalAmountToDebit,
       remainingBalance,
     },
     'Final voice call usage settled successfully'
   );
 
   return {
-    totalMinutes,
-    freeMinutesApplied,
-    billableMinutes,
+    totalDurationSeconds: durationSeconds,
+    totalMinutes: Number((durationSeconds / 60).toFixed(2)),
+    freeSecondsApplied,
+    freeMinutesApplied: Number((freeSecondsApplied / 60).toFixed(2)),
+    billableSeconds,
+    billableMinutes: Number((billableSeconds / 60).toFixed(2)),
     totalAmountCharged: expectedTotalCharge,
     incrementalAmountCharged: incrementalAmountToDebit,
     remainingBalance,

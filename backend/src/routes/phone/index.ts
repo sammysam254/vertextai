@@ -14,10 +14,8 @@ import { getWalletSummary, debitWallet, creditWallet } from '@/services/database
 
 const logger = createLogger('routes:phone');
 
-// Dedicated number pricing: Twilio base cost ($1.15) + $5.00 USD profit markup
-const NUMBER_BASE_PRICE = 1.15;
-const NUMBER_PROFIT_MARKUP = 5.00;
-const TOTAL_NUMBER_PRICE = NUMBER_BASE_PRICE + NUMBER_PROFIT_MARKUP; // $6.15 USD
+// Dedicated phone number price ($6.00/month flat)
+const TOTAL_NUMBER_PRICE = 6.00;
 
 export const phoneRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/phone/search - Search available phone numbers via Twilio API
@@ -43,10 +41,9 @@ export const phoneRoutes: FastifyPluginAsync = async (fastify) => {
         numbers,
         total: numbers.length,
         pricing: {
-          baseCost: NUMBER_BASE_PRICE,
-          markup: NUMBER_PROFIT_MARKUP,
-          totalPrice: TOTAL_NUMBER_PRICE,
+          price: TOTAL_NUMBER_PRICE,
           currency: 'USD',
+          period: 'monthly',
         },
       });
     } catch (err: any) {
@@ -81,14 +78,14 @@ export const phoneRoutes: FastifyPluginAsync = async (fastify) => {
       'Provisioning dedicated phone number for organization'
     );
 
-    // 1. Verify organization wallet has sufficient balance ($6.15 USD)
+    // 1. Verify organization wallet has sufficient balance ($6.00 USD)
     const wallet = await getWalletSummary(organizationId);
     if (wallet.balance < TOTAL_NUMBER_PRICE) {
       return reply.status(402).send({
         error: 'Payment Required',
         requiredAmount: TOTAL_NUMBER_PRICE,
         currentBalance: wallet.balance,
-        message: `Dedicated number provisioning requires $${TOTAL_NUMBER_PRICE.toFixed(2)} USD ($${NUMBER_BASE_PRICE.toFixed(2)} number cost + $${NUMBER_PROFIT_MARKUP.toFixed(2)} setup fee). Your current balance is $${wallet.balance.toFixed(2)}. Please recharge your wallet.`,
+        message: `Dedicated business phone number requires $${TOTAL_NUMBER_PRICE.toFixed(2)} USD/month. Your current balance is $${wallet.balance.toFixed(2)}. Please recharge your wallet.`,
       });
     }
 
@@ -97,11 +94,10 @@ export const phoneRoutes: FastifyPluginAsync = async (fastify) => {
       organizationId,
       amount: TOTAL_NUMBER_PRICE,
       type: 'number_purchase',
-      description: `Dedicated Business Phone (${normalizedNumber}): $${NUMBER_BASE_PRICE.toFixed(2)} carrier + $${NUMBER_PROFIT_MARKUP.toFixed(2)} platform fee`,
+      description: `Dedicated Business Phone (${normalizedNumber})`,
       metadata: {
         phoneNumber: normalizedNumber,
-        basePrice: NUMBER_BASE_PRICE,
-        profitMarkup: NUMBER_PROFIT_MARKUP,
+        price: TOTAL_NUMBER_PRICE,
       },
     });
 

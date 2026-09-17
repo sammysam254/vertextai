@@ -202,17 +202,18 @@ export const outboundCallRoutes: FastifyPluginAsync = async (fastify) => {
         const { billIncrementalCallUsage } = await import('@/services/database/wallet.service');
         const comm = await getCommunicationByTwilioSid(callSid);
         const destination = comm?.to_number;
-        const prevBilled = (callState as any).previouslyBilledMinutes || 0;
+        const prevBilledSeconds = (callState as any).previouslyBilledSeconds || 0;
 
         const billRes = await billIncrementalCallUsage({
           organizationId: callState.organizationId,
           callSid,
           elapsedSeconds: durationSeconds,
-          previouslyBilledMinutes: prevBilled,
+          previouslyBilledSeconds: prevBilledSeconds,
           destinationPhone: destination,
         });
 
         currentBalance = billRes.remainingBalance;
+        (callState as any).previouslyBilledSeconds = billRes.newBilledSeconds;
         (callState as any).previouslyBilledMinutes = billRes.newBilledMinutes;
         await setCallState(callSid, callState);
 

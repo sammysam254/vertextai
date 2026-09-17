@@ -70,15 +70,18 @@ export default function PhoneSettingsPage() {
   const supabase = createClient();
 
   const getApiEndpoint = (path: string): string => {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
     if (typeof window !== 'undefined') {
-      if (process.env.NEXT_PUBLIC_API_URL) {
-        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${path}`;
+      if (
+        process.env.NEXT_PUBLIC_API_URL &&
+        !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api') &&
+        !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
+      ) {
+        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
       }
-      if (window.location.hostname.includes('vertext.site')) {
-        return `https://vertext.site${path}`;
-      }
+      return cleanPath;
     }
-    return path;
+    return cleanPath;
   };
 
   // Load current escalation phone & wallet balance
@@ -361,17 +364,17 @@ export default function PhoneSettingsPage() {
           </div>
         </Panel>
 
-        {/* Dedicated Twilio Number Provisioning via API */}
+        {/* Dedicated Phone Number Provisioning */}
         <Panel className="p-5 sm:p-6 space-y-5">
           <div className="flex items-center justify-between">
             <h2 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-accent-primary" />
-              Provision Dedicated Twilio Number
+              Provision Dedicated Phone Number
             </h2>
-            <Badge variant="waiting">Twilio Carrier + Wallet</Badge>
+            <Badge variant="waiting">Monthly Subscription</Badge>
           </div>
 
-          {/* Wallet Balance & Monthly Pricing Transparency */}
+          {/* Wallet Balance & Monthly Pricing */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-navy-dark-elevated rounded-xl border border-navy-dark-border">
             <div className="flex items-center gap-2.5">
               <div className="p-1.5 rounded-lg bg-navy-dark border border-navy-dark-border">
@@ -381,7 +384,7 @@ export default function PhoneSettingsPage() {
                 <span className="text-xs text-slate-blue-300 block">Current Wallet Balance</span>
                 <span
                   className={`text-sm font-bold font-mono ${
-                    walletBalance >= 6.15 ? 'text-accent-success' : 'text-accent-danger'
+                    walletBalance >= 6.00 ? 'text-accent-success' : 'text-accent-danger'
                   }`}
                 >
                   ${walletBalance.toFixed(2)} USD
@@ -392,25 +395,22 @@ export default function PhoneSettingsPage() {
             <div className="text-right">
               <span className="text-xs text-slate-blue-300 block">
                 Number Price:{' '}
-                <span className="font-bold text-white">$6.15 USD/month</span>
+                <span className="font-bold text-white">$6.00 USD/month</span>
               </span>
-              <span className="text-[11px] text-slate-blue-400 block">
-                ($1.15 Twilio carrier + $5.00 platform fee)
-              </span>
-              {walletBalance < 6.15 && (
+              {walletBalance < 6.00 && (
                 <button
                   type="button"
                   onClick={() => setIsTopUpOpen(true)}
                   className="mt-1 text-xs text-chart-cyan hover:underline font-semibold flex items-center gap-1 ml-auto"
                 >
-                  + Top Up Wallet (Minimum $6.15 required)
+                  + Top Up Wallet (Minimum $6.00 required)
                 </button>
               )}
             </div>
           </div>
 
           <p className="text-xs sm:text-sm text-slate-blue-300">
-            Search live available phone numbers on Twilio and provision a dedicated number directly bound to your dashboard. The $6.15 fee is deducted from your wallet upon provisioning and recurs monthly:
+            Search live available phone numbers and provision a dedicated number directly bound to your dashboard. Billed monthly at $6.00 USD from your wallet balance:
           </p>
 
           <form onSubmit={handleSearchNumbers} className="space-y-3">
@@ -448,15 +448,30 @@ export default function PhoneSettingsPage() {
               className="w-full h-10 text-xs bg-accent-primary font-semibold"
               disabled={isSearching}
               isLoading={isSearching}
-              loadingText="Searching Twilio Live..."
+              loadingText="Searching Numbers..."
             >
               <Search className="h-4 w-4 mr-1.5" />
-              Search Available Phone Numbers
+              Search Available Numbers
             </Button>
           </form>
 
+          {/* Provisioning notification */}
+          {provisionSuccess && (
+            <div className="p-3 bg-accent-success/10 border border-accent-success/30 rounded-lg text-xs text-accent-success flex items-start gap-2">
+              <CheckCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{provisionSuccess}</span>
+            </div>
+          )}
+
+          {provisionError && (
+            <div className="p-3 bg-accent-danger/10 border border-accent-danger/30 rounded-lg text-xs text-accent-danger flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{provisionError}</span>
+            </div>
+          )}
+
           {searchError && (
-            <div className="p-3 bg-accent-danger/20 border border-accent-danger/30 rounded-lg text-accent-danger text-xs flex items-center gap-2">
+            <div className="p-3 bg-accent-danger/10 border border-accent-danger/30 rounded-lg text-xs text-accent-danger flex items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{searchError}</span>
             </div>
@@ -485,7 +500,7 @@ export default function PhoneSettingsPage() {
                       )}
                     </div>
 
-                    {walletBalance >= 6.15 ? (
+                    {walletBalance >= 6.00 ? (
                       <Button
                         variant="primary"
                         size="sm"
@@ -495,7 +510,7 @@ export default function PhoneSettingsPage() {
                         loadingText="Purchasing..."
                         className="h-8 px-3 bg-accent-success hover:bg-accent-success/90 text-white font-semibold text-xs"
                       >
-                        Buy ($6.15)
+                        Buy ($6.00/mo)
                       </Button>
                     ) : (
                       <Button
@@ -504,7 +519,7 @@ export default function PhoneSettingsPage() {
                         onClick={() => setIsTopUpOpen(true)}
                         className="h-8 px-3 text-xs border-accent-danger/50 text-accent-danger hover:bg-accent-danger/10"
                       >
-                        Top Up to Buy ($6.15)
+                        Top Up to Buy ($6.00)
                       </Button>
                     )}
                   </div>
