@@ -232,12 +232,6 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
 
         setPaystackRef(data.reference);
         setPaystackCheckoutUrl(data.authorization_url);
-
-        // Open Paystack Checkout in secure window
-        if (typeof window !== 'undefined' && data.authorization_url) {
-          window.open(data.authorization_url, '_blank', 'width=520,height=700');
-        }
-
         setIsProcessing(false);
         return;
       }
@@ -338,63 +332,38 @@ export function TopUpModal({ isOpen, onClose, onSuccess }: TopUpModalProps) {
         )}
 
         {/* 1. Paystack Checkout Status Card */}
+        {/* 1. Paystack In-App Checkout Frame (Runs 100% Inside the App) */}
         {paystackCheckoutUrl ? (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3.5 bg-navy-dark rounded-xl border border-navy-dark-border text-xs">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-navy-dark rounded-xl border border-navy-dark-border text-xs">
               <span className="text-slate-blue-300">
-                Amount to Pay: <strong className="text-white font-mono text-sm">KES {finalAmountKES.toLocaleString()}</strong> (Credits{' '}
+                Paying: <strong className="text-white font-mono text-sm">KES {finalAmountKES.toLocaleString()}</strong> (Credits{' '}
                 <span className="text-accent-success font-mono font-bold">${finalAmountUSD.toFixed(2)} USD</span>)
               </span>
               <span className="text-[11px] text-chart-cyan flex items-center gap-1 font-mono">
-                <ShieldCheck className="h-3.5 w-3.5" /> 256-bit Secure
+                <ShieldCheck className="h-3.5 w-3.5" /> 256-bit Encrypted
               </span>
             </div>
 
-            <div className="p-6 bg-navy-dark-elevated border border-navy-dark-border rounded-xl text-center space-y-4 shadow-xl">
-              <div className="w-14 h-14 rounded-full bg-accent-primary/20 border border-accent-primary/40 flex items-center justify-center text-chart-cyan mx-auto animate-pulse">
-                <CreditCard className="h-7 w-7" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white mb-1">Awaiting Paystack Payment</h3>
-                <p className="text-xs text-slate-blue-300 max-w-sm mx-auto leading-relaxed">
-                  Complete your Card or M-Pesa transaction in the secure checkout window. Your wallet balance will automatically credit the moment payment succeeds.
-                </p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => window.open(paystackCheckoutUrl, '_blank', 'width=520,height=700')}
-                  className="w-full sm:w-auto text-xs font-semibold h-10 px-4 flex items-center justify-center gap-1.5"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Re-open Paystack Checkout
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={() => paystackRef && verifyPaystackPayment(paystackRef)}
-                  disabled={isVerifyingPaystack}
-                  isLoading={isVerifyingPaystack}
-                  loadingText="Verifying..."
-                  className="w-full sm:w-auto text-xs bg-accent-success hover:bg-accent-success/90 text-white font-bold h-10 px-5 shadow-lg shadow-accent-success/20"
-                >
-                  <Check className="h-4 w-4 mr-1.5" />
-                  I Have Completed Payment
-                </Button>
-              </div>
+            {/* Embedded Paystack Checkout Frame */}
+            <div className="relative w-full h-[520px] rounded-xl overflow-hidden border border-white/10 bg-[#0F1629] shadow-2xl">
+              <iframe
+                src={paystackCheckoutUrl}
+                title="Paystack Checkout"
+                className="w-full h-full border-0 rounded-xl"
+                allow="payment"
+              />
             </div>
 
-            <div className="flex justify-between items-center pt-1 text-xs text-slate-blue-400">
-              <span className="flex items-center gap-1.5 text-[11px]">
-                <Clock className="h-3.5 w-3.5 text-chart-cyan animate-spin" /> Auto-checking payment every 3s...
+            <div className="flex justify-between items-center pt-2 text-xs text-slate-blue-400">
+              <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                Live: Auto-verifying your Card / M-Pesa payment...
               </span>
               <button
                 type="button"
                 onClick={handleReset}
-                className="text-xs text-slate-blue-400 hover:text-white underline"
+                className="text-xs text-slate-blue-400 hover:text-white underline cursor-pointer"
               >
                 Cancel &amp; Change Method
               </button>

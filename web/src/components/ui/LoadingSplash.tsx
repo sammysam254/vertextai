@@ -11,14 +11,23 @@ export function LoadingSplash({ persist = false }: { persist?: boolean }) {
   useEffect(() => {
     if (persist) return;
 
-    // Smooth fade-out once page is hydrated and ready
+    // Fast bypass: only show once per browser session
+    if (typeof window !== 'undefined' && sessionStorage.getItem('callpulse_splash_shown')) {
+      setIsVisible(false);
+      return;
+    }
+
+    // Quick smooth fade-out once hydrated
     const timer = setTimeout(() => {
       setIsFading(true);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('callpulse_splash_shown', 'true');
+      }
       const removeTimer = setTimeout(() => {
         setIsVisible(false);
-      }, 500);
+      }, 200);
       return () => clearTimeout(removeTimer);
-    }, 700);
+    }, 150);
 
     return () => clearTimeout(timer);
   }, [persist]);

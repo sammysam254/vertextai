@@ -60,6 +60,27 @@ export function OrganizationProvider({
   const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
   const [isBlocked, setIsBlocked] = useState<boolean>(false);
 
+  // Fast client-side cache hydration for zero-latency page transitions
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !initialOrg) {
+      try {
+        const cached = localStorage.getItem('callpulse_org_cache');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.organizationId) {
+            setOrganizationId(parsed.organizationId);
+            if (parsed.merchantCode) setMerchantCode(parsed.merchantCode);
+            if (parsed.organizationName) setOrganizationName(parsed.organizationName);
+            if (parsed.twilioPhoneNumber) setTwilioPhoneNumber(parsed.twilioPhoneNumber);
+            if (parsed.isDedicatedNumber !== undefined) setIsDedicatedNumber(parsed.isDedicatedNumber);
+            if (parsed.role) setRole(parsed.role);
+            setLoading(false);
+          }
+        }
+      } catch {}
+    }
+  }, [initialOrg]);
+
   const supabase = createClient();
 
   const resolveOrg = useCallback(async () => {
@@ -145,6 +166,22 @@ export function OrganizationProvider({
         setIsDedicatedNumber(isDedicated);
         setRole(isSuper ? 'super_admin' : (mem.role || 'owner'));
         setLoading(false);
+
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(
+              'callpulse_org_cache',
+              JSON.stringify({
+                organizationId: orgId,
+                organizationName: org?.name || 'My Call Center',
+                merchantCode: code,
+                twilioPhoneNumber: phone,
+                isDedicatedNumber: isDedicated,
+                role: isSuper ? 'super_admin' : (mem.role || 'owner'),
+              })
+            );
+          } catch {}
+        }
         return;
       }
 
@@ -168,6 +205,22 @@ export function OrganizationProvider({
           setRole(isSuper ? 'super_admin' : data.role);
           if (data.twilioPhoneNumber) setTwilioPhoneNumber(data.twilioPhoneNumber);
           if (data.isDedicatedNumber !== undefined) setIsDedicatedNumber(data.isDedicatedNumber);
+
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(
+                'callpulse_org_cache',
+                JSON.stringify({
+                  organizationId: data.organizationId,
+                  organizationName: data.organizationName,
+                  merchantCode: data.merchantCode,
+                  twilioPhoneNumber: data.twilioPhoneNumber || '+12513571708',
+                  isDedicatedNumber: Boolean(data.isDedicatedNumber),
+                  role: isSuper ? 'super_admin' : data.role,
+                })
+              );
+            } catch {}
+          }
         }
       } catch (err) {
         console.error('Failed to auto-resolve organization:', err);

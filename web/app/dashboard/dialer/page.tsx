@@ -323,13 +323,13 @@ export default function DialerPage() {
     setIsLoading(true);
     setError('');
     setTransferMessage(null);
+    const targetOrg = organizationId || contextOrgId || '';
 
     // MODE 1: Direct WebRTC Browser Calling (User can talk directly with mic & speaker)
     if (directVoiceMode && device) {
       try {
         setCallStatus('Connecting browser microphone & audio...');
 
-        const targetOrg = organizationId || contextOrgId || '';
         const call = await device.connect({
           params: {
             To: formattedNumber,
@@ -399,6 +399,7 @@ export default function DialerPage() {
           from: twilioPhone,
           agentName: agentName.trim(),
           companyName: companyName.trim(),
+          organizationId: targetOrg,
         }),
       });
 

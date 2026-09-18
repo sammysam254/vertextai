@@ -334,6 +334,85 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  // POST /api/v1/admin/users/:userId/wallet/adjust - Credit or deduct user's wallet
+  fastify.post<{
+    Params: { userId: string };
+    Body: {
+      amount: number;
+      action: 'credit' | 'deduct';
+      reason?: string;
+    };
+  }>('/users/:userId/wallet/adjust', async (request, reply) => {
+    const { userId } = request.params;
+    const { amount, action, reason } = request.body || {};
+
+    if (!amount || typeof amount !== 'number' || amount <= 0) {
+      return reply.status(400).send({ error: 'Bad Request', message: 'Amount must be a valid number greater than 0' });
+    }
+
+    if (action !== 'credit' && action !== 'deduct') {
+      return reply.status(400).send({ error: 'Bad Request', message: 'Action must be "credit" or "deduct"' });
+    }
+
+    try {
+      // 1. Locate organization for user
+      const { data: mem } = await supabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      const orgId = mem?.organization_id || userId;
+
+      const { creditWallet, debitWallet, getWalletSummary } = await import('@/services/database/wallet.service');
+
+      let newBalance = 0;
+      const parsedAmount = parseFloat(amount.toFixed(2));
+
+      if (action === 'credit') {
+        const res = await creditWallet({
+          organizationId: orgId,
+          amount: parsedAmount,
+          description: reason || 'Super Admin Wallet Credit',
+          paymentReference: `admin_credit_${Date.now()}`,
+          paymentGateway: 'manual',
+        });
+        newBalance = res.newBalance;
+      } else {
+        const currentSummary = await getWalletSummary(orgId);
+        const deductAmount = Math.min(currentSummary.balance, parsedAmount);
+        if (deductAmount > 0) {
+          const res = await debitWallet({
+            organizationId: orgId,
+            amount: deductAmount,
+            type: 'adjustment',
+            description: reason || 'Super Admin Wallet Deduction',
+            paymentReference: `admin_deduct_${Date.now()}`,
+          });
+          newBalance = res.newBalance;
+        } else {
+          newBalance = currentSummary.balance;
+        }
+      }
+
+      await invalidateOrganizationCache(orgId);
+
+      logger.info({ userId, orgId, action, amount: parsedAmount, newBalance }, 'Admin adjusted user wallet');
+
+      return reply.status(200).send({
+        success: true,
+        action,
+        amount: parsedAmount,
+        newBalance,
+        organizationId: orgId,
+        message: `Successfully ${action === 'credit' ? 'credited' : 'deducted'} $${parsedAmount.toFixed(2)}. New balance: $${newBalance.toFixed(2)}`,
+      });
+    } catch (err: any) {
+      logger.error({ err, userId }, 'Failed to adjust user wallet');
+      return reply.status(500).send({ error: 'Failed to adjust wallet', message: err.message });
+    }
+  });
+
   // POST /api/v1/admin/wallets/reset-all - Reset all balances immediately
   fastify.post('/wallets/reset-all', async (request, reply) => {
     try {

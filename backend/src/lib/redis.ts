@@ -65,10 +65,17 @@ const getRedisConfig = (): RedisOptions => {
   };
 };
 
-// In-memory fallback cache for when Redis is disabled or offline
+// High-speed In-memory fallback cache for when Redis is disabled or offline
 const memoryCache = new Map<string, { val: string; expiresAt?: number }>();
 
-const isRedisDisabled = process.env.REDIS_ENABLED === 'false';
+// On Render Free tier or local environments without REDIS_URL, auto-fallback to in-memory cache
+// This eliminates TCP timeout delays to localhost:6379 and provides sub-millisecond response times!
+const hasRedisConfig = Boolean(config.redisUrl || (config.redisHost && config.redisHost !== 'localhost'));
+const isRedisDisabled = process.env.REDIS_ENABLED === 'false' || !hasRedisConfig;
+
+if (!hasRedisConfig) {
+  logger.info('No REDIS_URL detected. Activated ultra-fast 0ms In-Memory Cache (Free Plan Optimized)');
+}
 
 // Create Redis client instance
 export const redis = isRedisDisabled

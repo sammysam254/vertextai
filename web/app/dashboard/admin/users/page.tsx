@@ -15,6 +15,11 @@ import {
   ShieldCheck,
   Lock,
   RotateCcw,
+  Plus,
+  Minus,
+  DollarSign,
+  X,
+  Coins,
 } from 'lucide-react';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { getApiEndpoint } from '@/lib/utils';
@@ -49,9 +54,68 @@ export default function SuperAdminUsersPage() {
   const [isResettingBalances, setIsResettingBalances] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
+  // Admin Wallet Adjust Modal State
+  const [walletModalUser, setWalletModalUser] = useState<AdminUserItem | null>(null);
+  const [adjustAmount, setAdjustAmount] = useState<string>('10.00');
+  const [adjustAction, setAdjustAction] = useState<'credit' | 'deduct'>('credit');
+  const [adjustReason, setAdjustReason] = useState<string>('');
+  const [isAdjustingWallet, setIsAdjustingWallet] = useState(false);
+
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const handleAdjustWallet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!walletModalUser) return;
+    const num = parseFloat(adjustAmount);
+    if (isNaN(num) || num <= 0) {
+      showToast('Please enter a valid amount greater than 0', 'error');
+      return;
+    }
+
+    setIsAdjustingWallet(true);
+    try {
+      const res = await fetch(getApiEndpoint(`/api/v1/admin/users/${walletModalUser.id}/wallet/adjust`), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': user?.email || 'sammyseth260@gmail.com',
+          'x-admin-key': 'sammyseth260_superadmin_secret',
+        },
+        body: JSON.stringify({
+          amount: num,
+          action: adjustAction,
+          reason: adjustReason.trim() || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to adjust wallet');
+
+      showToast(data.message || `Wallet balance updated: $${data.newBalance.toFixed(2)}`, 'success');
+      setUsers(prev =>
+        prev.map(u => {
+          if (u.id === walletModalUser.id && u.organization) {
+            return {
+              ...u,
+              organization: {
+                ...u.organization,
+                walletBalance: data.newBalance,
+              },
+            };
+          }
+          return u;
+        })
+      );
+      setWalletModalUser(null);
+      setAdjustReason('');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to adjust wallet', 'error');
+    } finally {
+      setIsAdjustingWallet(false);
+    }
   };
 
   const loadUsers = useCallback(async () => {
@@ -485,15 +549,28 @@ export default function SuperAdminUsersPage() {
 
                       {/* Wallet Balance */}
                       <td className="px-5 py-4">
-                        <span
-                          className={`font-mono font-bold text-sm ${
-                            (item.organization?.walletBalance || 0) > 0
-                              ? 'text-emerald-400'
-                              : 'text-slate-400'
-                          }`}
-                        >
-                          ${(item.organization?.walletBalance || 0).toFixed(2)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`font-mono font-bold text-sm ${
+                              (item.organization?.walletBalance || 0) > 0
+                                ? 'text-emerald-400'
+                                : 'text-slate-400'
+                            }`}
+                          >
+                            ${(item.organization?.walletBalance || 0).toFixed(2)}
+                          </span>
+                          <button
+                            onClick={() => {
+                              setWalletModalUser(item);
+                              setAdjustAction('credit');
+                              setAdjustAmount('10.00');
+                            }}
+                            title="Credit or Deduct funds from user wallet"
+                            className="px-2 py-0.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-[10px] font-bold transition-all active:scale-95 cursor-pointer"
+                          >
+                            ± Adjust
+                          </button>
+                        </div>
                       </td>
 
                       {/* Status */}
@@ -543,6 +620,145 @@ export default function SuperAdminUsersPage() {
           </table>
         </div>
       </div>
+
+      {/* Admin Adjust Wallet Modal */}
+      {walletModalUser && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#0F1629] border border-cyan-500/30 rounded-2xl p-6 max-w-md w-full shadow-2xl relative">
+            <button
+              onClick={() => setWalletModalUser(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/5"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                <Coins className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Adjust User Wallet</h3>
+                <p className="text-xs text-slate-400">{walletModalUser.name} ({walletModalUser.email})</p>
+              </div>
+            </div>
+
+            <div className="bg-[#070B14] p-3.5 rounded-xl border border-white/5 mb-5 flex items-center justify-between">
+              <span className="text-xs text-slate-400">Current Balance:</span>
+              <span className="font-mono text-sm font-bold text-emerald-400">
+                ${(walletModalUser.organization?.walletBalance || 0).toFixed(2)} USD
+              </span>
+            </div>
+
+            <form onSubmit={handleAdjustWallet} className="space-y-4">
+              {/* Action Tabs: Credit or Deduct */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Select Action
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdjustAction('credit')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                      adjustAction === 'credit'
+                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                        : 'bg-slate-900 border-white/5 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Plus className="w-4 h-4" />
+                    Credit / Add Funds
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdjustAction('deduct')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                      adjustAction === 'deduct'
+                        ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 shadow-[0_0_15px_rgba(244,63,94,0.2)]'
+                        : 'bg-slate-900 border-white/5 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Minus className="w-4 h-4" />
+                    Deduct Funds
+                  </button>
+                </div>
+              </div>
+
+              {/* Amount Input */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Amount (USD)
+                </label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.10"
+                    value={adjustAmount}
+                    onChange={(e) => setAdjustAmount(e.target.value)}
+                    required
+                    placeholder="10.00"
+                    className="w-full pl-9 pr-4 py-2.5 bg-[#070B14] border border-white/10 rounded-xl text-white font-mono text-sm focus:outline-none focus:border-cyan-500/50"
+                  />
+                </div>
+                {/* Preset Chips */}
+                <div className="flex gap-2 mt-2">
+                  {['5', '10', '25', '50', '100'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setAdjustAmount(preset)}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono font-semibold cursor-pointer"
+                    >
+                      ${preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Reason Input */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Reason / Memo (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={adjustReason}
+                  onChange={(e) => setAdjustReason(e.target.value)}
+                  placeholder="e.g. Free bonus credit, support adjustment"
+                  className="w-full px-3 py-2 bg-[#070B14] border border-white/10 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-cyan-500/50"
+                />
+              </div>
+
+              {/* Submit / Cancel Buttons */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setWalletModalUser(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <Button
+                  type="submit"
+                  disabled={isAdjustingWallet}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold text-white shadow-lg cursor-pointer ${
+                    adjustAction === 'credit'
+                      ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20'
+                      : 'bg-rose-600 hover:bg-rose-500 shadow-rose-500/20'
+                  }`}
+                >
+                  {isAdjustingWallet
+                    ? 'Processing...'
+                    : adjustAction === 'credit'
+                    ? `Credit +$${parseFloat(adjustAmount || '0').toFixed(2)}`
+                    : `Deduct -$${parseFloat(adjustAmount || '0').toFixed(2)}`}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

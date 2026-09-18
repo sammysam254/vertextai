@@ -93,7 +93,7 @@ export async function handleIncomingCall(
         }
 
         const { checkCanMakeCall } = await import('@/services/database/wallet.service');
-        const canCall = await checkCanMakeCall(orgId);
+        const canCall = await checkCanMakeCall(orgId, normalizedTo);
         if (!canCall.allowed) {
           logger.warn({ orgId }, 'Outbound call prevented due to depleted wallet and free minutes');
           const twiml = `<?xml version="1.0" encoding="UTF-8"?>
