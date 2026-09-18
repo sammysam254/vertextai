@@ -4,6 +4,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { createLogger } from '@/lib/logger';
+import { getCached, setCached, deleteCached } from '@/lib/redis';
 import type {
   WalletSummary,
   WalletTransaction,
@@ -113,6 +114,12 @@ function isCurrentMonth(dateStr?: string | null): boolean {
  * Retrieve organization wallet balance and free minutes status
  */
 export async function getWalletSummary(organizationId: string): Promise<WalletSummary> {
+  const cacheKey = `wallet:summary:${organizationId}`;
+  const cached = await getCached<WalletSummary>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   try {
     const { data: org, error } = await supabase
       .from('organizations')
@@ -121,13 +128,15 @@ export async function getWalletSummary(organizationId: string): Promise<WalletSu
       .maybeSingle();
 
     if (error || !org) {
-      return {
+      const emptyResult: WalletSummary = {
         organizationId,
         balance: 0.0,
         monthlyFreeMinutesUsed: 0,
         monthlyFreeMinutesLimit: MONTHLY_FREE_MINUTES_LIMIT,
         currency: 'USD',
       };
+      await setCached(cacheKey, emptyResult, 10);
+      return emptyResult;
     }
 
     // Monthly reset check
@@ -147,13 +156,18 @@ export async function getWalletSummary(organizationId: string): Promise<WalletSu
 
     const balance = parseFloat(String(org.wallet_balance || (org.metadata?.wallet_balance as number) || 0));
 
-    return {
+    const result: WalletSummary = {
       organizationId,
       balance: Math.max(0, balance),
       monthlyFreeMinutesUsed: freeMinutesUsed,
       monthlyFreeMinutesLimit: MONTHLY_FREE_MINUTES_LIMIT,
       currency: 'USD',
     };
+
+    // Cache in Redis with 30s TTL
+    await setCached(cacheKey, result, 30);
+
+    return result;
   } catch (err: any) {
     logger.error({ err, organizationId }, 'Error retrieving wallet summary');
     return {
@@ -285,6 +299,8 @@ export async function creditWallet(params: {
       { organizationId, amount, newBalance, paymentGateway, paymentReference },
       'Wallet successfully credited'
     );
+
+    await deleteCached(`wallet:summary:${organizationId}`);
 
     return {
       success: true,
@@ -540,6 +556,8 @@ export async function debitWallet(params: {
       'Wallet debited successfully'
     );
 
+    await deleteCached(`wallet:summary:${organizationId}`);
+
     return {
       success: true,
       newBalance,
@@ -756,6 +774,8 @@ export async function billIncrementalCallUsage(params: {
         last_free_minutes_reset: new Date().toISOString(),
       })
       .eq('id', organizationId);
+
+    await deleteCached(`wallet:summary:${organizationId}`);
   }
 
   const costNow = parseFloat((paidSecondsNow * rateInfo.ratePerSecond).toFixed(4));
