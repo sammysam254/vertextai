@@ -53,7 +53,7 @@ export default function SuspendedPage() {
       // Check organization membership block status
       const { data: membership } = await supabase
         .from('organization_members')
-        .select('organization_id, organizations ( is_blocked, metadata )')
+        .select('organization_id, organizations ( metadata )')
         .eq('user_id', user.id)
         .maybeSingle();
 

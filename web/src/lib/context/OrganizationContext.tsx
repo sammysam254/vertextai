@@ -83,7 +83,7 @@ export function OrganizationProvider({
       // Check existing membership directly
       const { data: mem } = await supabase
         .from('organization_members')
-        .select('organization_id, role, organizations ( id, name, metadata, twilio_phone_number, is_blocked )')
+        .select('organization_id, role, organizations ( id, name, metadata, twilio_phone_number )')
         .eq('user_id', authUser.id)
         .limit(1)
         .maybeSingle();

@@ -25,7 +25,7 @@ COPY web ./
 # Hardcode Next.js public env vars (these are public/non-secret)
 ENV NEXT_PUBLIC_SUPABASE_URL=https://cnezekhsnitmhptzlfys.supabase.co
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNuZXpla2hzbml0bWhwdHpsZnlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0OTU0NjgsImV4cCI6MjEwNTA3MTQ2OH0.ya9x8i5dJKo1ntrTMhhWe5rbBOcnke_8ZIgfHL9xOMs
-ENV NEXT_PUBLIC_API_URL=https://vertext.site
+ENV NEXT_PUBLIC_API_URL=https://www.vertext.site
 ENV NEXT_PUBLIC_TWILIO_PHONE=+12513571708
 ENV DOCKER_BUILD=true
 ENV NEXT_TELEMETRY_DISABLED=1

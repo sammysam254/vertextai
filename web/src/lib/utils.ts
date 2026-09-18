@@ -17,7 +17,7 @@ export const BACKEND_API_URL =
   !process.env.NEXT_PUBLIC_API_URL.includes('localhost') &&
   !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api')
     ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')
-    : 'https://vertextai-3lit.onrender.com';
+    : 'https://www.vertext.site';
 
 /**
  * Resolve full backend API URL for client, mobile (Capacitor), and server calls
@@ -30,22 +30,24 @@ export function getApiEndpoint(path: string): string {
     const isCapacitor = Boolean(
       (window as any).Capacitor?.isNativePlatform?.() ||
       window.location.protocol === 'capacitor:' ||
-      window.location.hostname === 'localhost' && /Android|iPhone|iPad/i.test(navigator.userAgent)
+      (window.location.hostname === 'localhost' && /Android|iPhone|iPad/i.test(navigator.userAgent))
     );
     if (isCapacitor) {
       return `${BACKEND_API_URL}${cleanPath}`;
     }
 
-    // Local dev browser: proxy through Next.js rewrite
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return cleanPath;
-    }
-
-    // Production web (vertext.site, custom domains, Render web)
-    return `${BACKEND_API_URL}${cleanPath}`;
+    // In standard browser environment (vertext.site, www.vertext.site, Render, localhost):
+    // ALWAYS use relative path so requests are strictly same-origin!
+    // This completely prevents CORS preflight OPTIONS redirects and "TypeError: Failed to fetch"
+    return cleanPath;
   }
 
-  return `${BACKEND_API_URL}${cleanPath}`;
+  // Server-side rendering (SSR) in Next.js: connect to internal Fastify port
+  const internalBackend =
+    process.env.BACKEND_INTERNAL_URL ||
+    process.env.BACKEND_HOST ||
+    'http://127.0.0.1:5050';
+  return `${internalBackend.replace(/\/$/, '')}${cleanPath}`;
 }
 
 /**

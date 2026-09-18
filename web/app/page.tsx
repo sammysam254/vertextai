@@ -30,7 +30,7 @@ export default function HomePage() {
       </div>
 
       {/* Header */}
-      <header className="sticky top-0 z-40 backdrop-blur-xl bg-[#070B14]/80 border-b border-white/[0.06] transition-all">
+      <header className="sticky top-0 z-40 backdrop-blur-xl bg-[#070B14]/80 border-b border-white/[0.06] transition-all pt-safe">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
           {/* Brand */}
           <Link href="/" className="flex items-center gap-3 group">

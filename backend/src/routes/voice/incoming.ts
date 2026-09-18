@@ -177,14 +177,17 @@ export async function handleIncomingCall(
 
     const callerId = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');
     const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(CallSid || '')}`;
+    const normalizedCaller = From ? normalizePhoneNumber(From) : '';
+    const shouldDialPhone = normalizedCaller !== '+254706499848';
     const fallbackTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">Connecting to support. Please hold.</Say>
   <Dial timeout="25" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
-    +254706499848
+    <Client>merchant_default</Client>
+    ${shouldDialPhone ? '<Number>+254706499848</Number>' : ''}
   </Dial>
   <Say voice="alice">All representatives are busy. Please leave a message after the beep.</Say>
-  <Record timeout="10" maxLength="60"/>
+  <Record timeout="10" maxLength="60" action="${escapeXml(dialStatusUrl)}"/>
   <Hangup/>
 </Response>`;
 
@@ -232,14 +235,17 @@ export async function handleMerchantRoute(
     // Default fallback organization / team
     const callerId = normalizePhoneNumber(config.twilioPhoneNumber || to || '+12513571708');
     const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
+    const normalizedFrom = from ? normalizePhoneNumber(from) : '';
+    const shouldDialPhone = normalizedFrom !== '+254706499848';
     const fallbackTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">Thank you for calling. Connecting you to customer care.</Say>
-  <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
-    +254706499848
+  <Dial timeout="30" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
+    <Client>merchant_default</Client>
+    ${shouldDialPhone ? '<Number>+254706499848</Number>' : ''}
   </Dial>
   <Say voice="alice">Please leave your name and message after the tone.</Say>
-  <Record timeout="10" maxLength="60"/>
+  <Record timeout="10" maxLength="60" action="${escapeXml(dialStatusUrl)}"/>
   <Hangup/>
 </Response>`;
 
@@ -251,8 +257,8 @@ export async function handleMerchantRoute(
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">Connecting your call. Please hold.</Say>
-  <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
-    +254706499848
+  <Dial timeout="30" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
+    <Client>merchant_default</Client>
   </Dial>
   <Hangup/>
 </Response>`;
@@ -301,39 +307,55 @@ async function routeCallToOrganization(
     }
 
     const merchantPhone = normalizePhoneNumber(targetPhone);
+    const effectiveBaseUrl = (config.baseUrl && !config.baseUrl.includes('localhost') && !config.baseUrl.includes('127.0.0.1'))
+      ? config.baseUrl
+      : 'https://www.vertext.site';
+    const clientIdentity = `merchant_${org.id}`;
     const callerId = normalizePhoneNumber(config.twilioPhoneNumber || to || '+12513571708');
-    const dialStatusUrl = `${config.baseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
+    const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}&orgId=${encodeURIComponent(org.id)}`;
     const voiceId = 'alice';
 
     logger.info(
-      { callSid, orgId: org.id, orgName: org.name, merchantPhone, callerId },
-      'Ringing merchant phone directly'
+      { callSid, orgId: org.id, orgName: org.name, clientIdentity, callerId },
+      'Routing inbound call to merchant dashboard WebRTC client directly'
     );
 
-    const clientIdentity = `merchant_${org.id}`;
+    // If caller is NOT the merchant phone and a distinct escalation number is configured, allow simultaneous ring
+    const normalizedFrom = from ? normalizePhoneNumber(from) : '';
+    const hasValidPstnForward = merchantPhone &&
+      merchantPhone !== normalizedFrom &&
+      merchantPhone !== callerId &&
+      Boolean(org.escalation_phone_number || org.metadata?.escalation_phone);
+
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="${escapeXml(voiceId)}">Connecting you to ${escapeXml(org.name)}. Please hold.</Say>
-  <Dial timeout="25" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
+  <Dial timeout="30" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
     <Client>${escapeXml(clientIdentity)}</Client>
-    <Number>${escapeXml(merchantPhone)}</Number>
+    ${hasValidPstnForward ? `<Number>${escapeXml(merchantPhone)}</Number>` : ''}
   </Dial>
-  <Say voice="${escapeXml(voiceId)}">The merchant is currently unavailable. Please leave a message after the tone.</Say>
-  <Record timeout="10" maxLength="60"/>
+  <Say voice="${escapeXml(voiceId)}">The team is currently unavailable. Please leave a message after the tone.</Say>
+  <Record timeout="10" maxLength="60" action="${escapeXml(dialStatusUrl)}"/>
   <Hangup/>
 </Response>`;
 
     return reply.status(200).type('text/xml').send(twiml);
   } catch (err) {
     logger.error({ err, orgId: org.id }, 'Error routing call to organization');
+    const effectiveBaseUrl = (config.baseUrl && !config.baseUrl.includes('localhost') && !config.baseUrl.includes('127.0.0.1'))
+      ? config.baseUrl
+      : 'https://www.vertext.site';
     const callerId = normalizePhoneNumber(config.twilioPhoneNumber || '+12513571708');
-    const dialStatusUrl = `${config.baseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
+    const dialStatusUrl = `${effectiveBaseUrl}/api/v1/voice/dial-status?callSid=${encodeURIComponent(callSid)}`;
+    const clientIdentity = `merchant_${org?.id || 'default'}`;
     const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">Connecting you to ${escapeXml(org?.name || 'customer care')}. Please hold.</Say>
-  <Dial timeout="35" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
-    +254706499848
+  <Dial timeout="30" callerId="${escapeXml(callerId)}" action="${escapeXml(dialStatusUrl)}">
+    <Client>${escapeXml(clientIdentity)}</Client>
   </Dial>
+  <Say voice="alice">All representatives are busy. Please leave a message after the beep.</Say>
+  <Record timeout="10" maxLength="60" action="${escapeXml(dialStatusUrl)}"/>
   <Hangup/>
 </Response>`;
     return reply.status(200).type('text/xml').send(twiml);

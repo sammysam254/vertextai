@@ -42,41 +42,11 @@ app.addContentTypeParser(
 
 // CORS Configuration
 await app.register(cors, {
-  origin: (origin, cb) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) {
-      cb(null, true);
-      return;
-    }
-
-    // Allow all origins in development
-    if (config.nodeEnv === 'development') {
-      cb(null, true);
-      return;
-    }
-
-    // Whitelist specific domains + all *.onrender.com and localhost
-    const allowedOrigins = [
-      'https://callpulse-web.onrender.com',
-      'https://callpulse.io',
-      'https://www.callpulse.io',
-      'https://vertextai-3lit.onrender.com',
-    ];
-
-    const isAllowed =
-      allowedOrigins.includes(origin) ||
-      origin.endsWith('.onrender.com') ||
-      origin.includes('localhost') ||
-      origin.includes('127.0.0.1');
-
-    if (isAllowed) {
-      cb(null, true);
-    } else {
-      cb(null, true); // Allow all web origins to access API seamlessly
-    }
-  },
+  origin: true, // Seamlessly reflects request origin (vertext.site, www.vertext.site, capacitor, localhost)
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-request-id', 'Accept', 'Origin', 'X-Requested-With'],
+  exposedHeaders: ['x-request-id'],
 });
 
 // Security headers

@@ -197,12 +197,17 @@
     background: linear-gradient(180deg, rgba(20, 184, 166, 0.4) 0%, rgba(6, 182, 212, 0.2) 100%);
   }
 
-  /* Mobile Safe Area Inset Utilities */
+  /* Mobile Safe Area Inset Utilities for notch and status bar (Android & iOS) */
   .pt-safe {
-    padding-top: max(env(safe-area-inset-top, 0px), 0.5rem);
+    padding-top: max(env(safe-area-inset-top, 0px), 1.85rem);
+  }
+  @media (min-width: 768px) {
+    .pt-safe {
+      padding-top: env(safe-area-inset-top, 0px);
+    }
   }
   .pb-safe {
-    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.5rem);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 1rem);
   }
 }
 

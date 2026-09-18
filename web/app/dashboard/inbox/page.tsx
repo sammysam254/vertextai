@@ -62,15 +62,18 @@ export default function InboxPage() {
       // 1. Fetch SMS communications
       const { data: comms, error } = await supabase
         .from('communications')
-        .select(`
-          id, type, from_number, to_number, content, status, created_at,
-          contacts ( id, name )
-        `)
+        .select('id, type, from_number, to_number, summary, status, created_at')
         .eq('organization_id', organizationId)
         .in('type', ['sms_in', 'sms_out'])
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.warn('Communications query error (fallback to empty):', error.message);
+        setConversationsList([]);
+        setSelectedConversation(null);
+        setLoading(false);
+        return;
+      }
 
       if (!comms || comms.length === 0) {
         setConversationsList([]);
@@ -87,8 +90,8 @@ export default function InboxPage() {
         const customerPhone = isInbound ? c.from_number : c.to_number;
         if (!customerPhone) continue;
 
-        const contactName = (c.contacts as any)?.name || null;
-        const msgBody = c.content || (isInbound ? 'Inbound message' : 'Outbound message');
+        const contactName = null;
+        const msgBody = (c as any).summary || (isInbound ? 'Inbound message' : 'Outbound message');
 
         const messageObj: Message = {
           id: c.id,
