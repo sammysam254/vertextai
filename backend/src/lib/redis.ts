@@ -13,8 +13,10 @@ const getRedisConfig = (): RedisOptions => {
   // Check if REDIS_URL is provided (production/Render)
   if (config.redisUrl) {
     logger.info('Using REDIS_URL connection string');
+    const isTls = config.redisUrl.startsWith('rediss://') || config.redisUrl.includes('upstash.io');
     return {
       maxRetriesPerRequest: 3,
+      tls: isTls ? { rejectUnauthorized: false } : undefined,
       retryStrategy: (times: number) => {
         const delay = Math.min(times * 50, 2000);
         logger.warn(`Redis connection retry #${times}, delay: ${delay}ms`);
