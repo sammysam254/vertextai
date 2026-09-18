@@ -8,11 +8,12 @@ import { Button } from '@/components/ui/Button';
 import { Textarea } from '@/components/ui/Textarea';
 import { Modal } from '@/components/ui/Modal';
 import { Send, Plus, MessageSquare, AlertCircle, CheckCircle2, Phone } from 'lucide-react';
-import { getRelativeTime, formatPhoneNumber } from '@/lib/utils';
+import { getRelativeTime, formatPhoneNumber, getApiEndpoint } from '@/lib/utils';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { createClient } from '@/lib/supabase/client';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { CallPulseLoader } from '@/components/ui/CallPulseLoader';
 
 interface Message {
   id: string;
@@ -35,15 +36,15 @@ export default function InboxPage() {
   const { organizationId, merchantCode } = useOrganization();
   const supabase = createClient();
   const searchParams = useSearchParams();
-  const prefillPhone = searchParams?.get('phone') || '';
+  const prefillPhone = searchParams.get('phone') || '';
 
   const [conversationsList, setConversationsList] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [replyText, setReplyText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
 
   // New message modal state
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -51,13 +52,6 @@ export default function InboxPage() {
   const [newBody, setNewBody] = useState('');
   const [newModalError, setNewModalError] = useState('');
   const [newModalSuccess, setNewModalSuccess] = useState('');
-
-  const getApiEndpoint = (path: string): string => {
-    if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
-      return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${path}`;
-    }
-    return path;
-  };
 
   // Load real SMS messages from database
   const loadConversations = useCallback(async () => {
@@ -159,22 +153,29 @@ export default function InboxPage() {
     const formattedTo = formatPhoneNumber(to);
     const endpoint = getApiEndpoint('/api/v1/sms/outbound');
 
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to: formattedTo,
-        body,
-        from: process.env.NEXT_PUBLIC_TWILIO_PHONE || '+12513571708',
-        organizationId,
-      }),
-    });
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: formattedTo,
+          body,
+          from: process.env.NEXT_PUBLIC_TWILIO_PHONE || '+12513571708',
+          organizationId,
+        }),
+      });
 
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.message || 'Failed to send SMS');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || data.error || `Failed to send SMS (Status ${res.status})`);
+      }
+      return { data, formattedTo };
+    } catch (err: any) {
+      if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+        throw new Error('Network error: Could not reach SMS service. Please verify your connection.');
+      }
+      throw err;
     }
-    return { data, formattedTo };
   };
 
   const handleSendReply = async () => {
@@ -299,7 +300,9 @@ export default function InboxPage() {
 
           <div className="flex-1 overflow-y-auto divide-y divide-navy-dark-border">
             {loading ? (
-              <div className="p-6 text-center text-xs text-slate-blue-400">Loading messages...</div>
+              <div className="py-8">
+                <CallPulseLoader size="sm" text="Loading conversations..." />
+              </div>
             ) : filteredThreads.length === 0 ? (
               <div className="p-6 text-center text-slate-blue-400">
                 <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30 text-accent-primary" />

@@ -69,13 +69,6 @@ export default function WorkspacePage() {
   ]);
   const [newNoteText, setNewNoteText] = useState('');
 
-  const getApiEndpoint = (path: string): string => {
-    if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
-      return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${path}`;
-    }
-    return path;
-  };
-
   // Load merchant-specific calls and metrics
   const loadWorkspaceData = useCallback(async () => {
     if (!organizationId) return;

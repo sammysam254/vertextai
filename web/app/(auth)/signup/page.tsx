@@ -7,8 +7,7 @@ import { Phone, CheckCircle2, Sparkles } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5050';
+import { getApiEndpoint } from '@/lib/utils';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -42,7 +41,7 @@ export default function SignupPage() {
 
       // 2. Call backend setup endpoint (service-role, bypasses RLS)
       //    Creates the organization + owner membership atomically
-      const res = await fetch(`${API_URL}/api/v1/auth/setup`, {
+      const res = await fetch(getApiEndpoint('/api/v1/auth/setup'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

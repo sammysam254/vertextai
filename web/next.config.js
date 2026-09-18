@@ -12,13 +12,19 @@ const nextConfig = {
   experimental: {
     typedRoutes: true,
   },
-  // Proxy API requests to backend on port 5050 inside the container
+  // Proxy API requests to backend
   async rewrites() {
-    const backendHost = process.env.BACKEND_INTERNAL_URL || process.env.BACKEND_HOST || 'http://127.0.0.1:5050';
+    const backendHost =
+      process.env.BACKEND_INTERNAL_URL ||
+      process.env.BACKEND_HOST ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      (process.env.NODE_ENV === 'development'
+        ? 'http://127.0.0.1:5050'
+        : 'https://vertextai-3lit.onrender.com');
     return [
       {
         source: '/api/:path*',
-        destination: `${backendHost}/api/:path*`,
+        destination: `${backendHost.replace(/\/$/, '')}/api/:path*`,
       },
     ];
   },

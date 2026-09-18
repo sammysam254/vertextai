@@ -18,7 +18,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { formatDuration, formatPhoneNumber } from '@/lib/utils';
+import { formatDuration, formatPhoneNumber, getApiEndpoint } from '@/lib/utils';
 import { useAgents } from '@/lib/hooks/useCalls';
 
 export function IncomingCallBar() {
@@ -43,13 +43,6 @@ export function IncomingCallBar() {
   const vibrationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { agents } = useAgents(organizationId, true);
-
-  const getApiEndpoint = (path: string): string => {
-    if (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')) {
-      return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${path}`;
-    }
-    return path;
-  };
 
   // Vibration support for mobile devices
   const startVibration = () => {

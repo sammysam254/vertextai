@@ -156,13 +156,16 @@ export default function DialerPage() {
   // Initialize Twilio WebRTC Voice Device for in-browser live calling
   useEffect(() => {
     let isMounted = true;
+    const targetOrg = organizationId || contextOrgId;
+
+    // Wait until organization is resolved to ensure calls are attributed to the correct tenant
+    if (!targetOrg) return;
 
     async function setupWebRTCDevice() {
       if (typeof window === 'undefined') return;
 
       try {
-        const targetOrg = organizationId || contextOrgId;
-        const clientIdentity = targetOrg ? `merchant_${targetOrg}` : `agent_${Math.random().toString(36).substring(2, 8)}`;
+        const clientIdentity = `merchant_${targetOrg}`;
         const tokenEndpoint = getApiEndpoint(
           `/api/v1/voice/token?identity=${encodeURIComponent(clientIdentity)}`
         );
@@ -185,6 +188,13 @@ export default function DialerPage() {
 
         // Dynamically import Twilio Voice SDK in browser only
         const { Device, Call } = await import('@twilio/voice-sdk');
+
+        // Destroy previous instance if org changed
+        if (deviceRef.current) {
+          try {
+            deviceRef.current.destroy();
+          } catch {}
+        }
 
         const twilioDevice = new Device(data.token, {
           logLevel: 1,
@@ -222,7 +232,7 @@ export default function DialerPage() {
         } catch {}
       }
     };
-  }, []);
+  }, [organizationId, contextOrgId]);
 
   // Call timer increment when connected
   useEffect(() => {

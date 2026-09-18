@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useOrganization } from '@/lib/context/OrganizationContext';
 import { TopUpModal } from '@/components/billing/TopUpModal';
+import { getApiEndpoint } from '@/lib/utils';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -19,21 +20,6 @@ export function DashboardHeader() {
   const [activeCallCount, setActiveCallCount] = useState(0);
   const [walletBalance, setWalletBalance] = useState(0.0);
   const [isTopUpOpen, setIsTopUpOpen] = useState(false);
-
-  const getApiEndpoint = (path: string): string => {
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    if (typeof window !== 'undefined') {
-      if (
-        process.env.NEXT_PUBLIC_API_URL &&
-        !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api') &&
-        !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
-      ) {
-        return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
-      }
-      return cleanPath;
-    }
-    return cleanPath;
-  };
 
   const fetchWallet = useCallback(async () => {
     if (!organizationId) return;
@@ -101,90 +87,85 @@ export function DashboardHeader() {
     : '?';
 
   return (
-    <header className="sticky top-0 z-30 bg-navy-dark/95 backdrop-blur-sm border-b border-navy-dark-border pt-safe">
-      <div className="flex items-center justify-between pl-13 pr-2.5 sm:px-6 py-2 sm:py-3 min-h-[54px]">
+    <header className="sticky top-0 z-30 bg-[#070B14]/90 backdrop-blur-xl border-b border-white/[0.07] pt-safe">
+      <div className="flex items-center justify-between pl-14 pr-3 sm:px-6 py-2.5 sm:py-3.5 min-h-[58px]">
         {/* Search - Visible on tablet and desktop */}
         <div className="hidden md:block flex-1 max-w-xs lg:max-w-md mr-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-blue-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="search"
               placeholder="Search calls, contacts, or messages..."
-              className="w-full pl-9 pr-4 py-1.5 bg-navy-dark-elevated border border-navy-dark-border rounded-md text-xs sm:text-sm text-slate-blue-100 placeholder:text-slate-blue-500 focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-transparent"
+              className="w-full pl-9 pr-4 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-xs sm:text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all"
             />
           </div>
         </div>
 
         {/* Brand / Title shown only on mobile when sidebar is closed */}
-        <div className="md:hidden flex items-center gap-1.5 shrink-0">
-          <div className="relative w-6 h-6 rounded-md overflow-hidden border border-chart-cyan/40 bg-[#0F1629] p-0.5 shrink-0 shadow-sm">
+        <div className="md:hidden flex items-center gap-2 shrink-0">
+          <div className="relative w-6 h-6 rounded-lg overflow-hidden border border-cyan-500/30 bg-[#0F1629] p-0.5 shrink-0 shadow-[0_0_10px_rgba(0,212,255,0.2)]">
             <Image
               src="/brand/icon.png"
-              alt="Contact Centre Insights"
+              alt="CallPulse"
               width={24}
               height={24}
               className="object-contain"
             />
           </div>
-          <span className="text-[11px] font-black text-white tracking-wider uppercase hidden sm:inline">Contact Centre</span>
+          <span className="text-xs font-black text-white tracking-wider uppercase hidden sm:inline">CallPulse</span>
         </div>
 
         {/* Right Section */}
-        <div className="flex items-center gap-1 sm:gap-2.5 ml-auto">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 ml-auto">
           {/* Active Call Live Indicator */}
           {activeCallCount > 0 && (
             <Link
               href="/dashboard/calls"
-              className="flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-accent-success/20 border border-accent-success/40 text-accent-success text-[10px] sm:text-xs font-semibold animate-pulse shrink-0"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] sm:text-xs font-bold animate-pulse shrink-0"
               title={`${activeCallCount} active call in progress`}
             >
-              <PhoneIncoming className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
+              <PhoneIncoming className="h-3 w-3 shrink-0" />
               <span className="hidden xs:inline">Active:</span>
               <span>{activeCallCount}</span>
             </Link>
           )}
 
           {/* Interactive Wallet Balance Badge */}
-          <div
+          <button
             onClick={() => setIsTopUpOpen(true)}
-            title="Available in-app wallet balance for voice minutes and dedicated numbers. Click to top up."
-            className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 bg-accent-primary/15 hover:bg-accent-primary/25 border border-accent-primary/40 hover:border-chart-cyan rounded-lg cursor-pointer transition-all text-xs shrink-0 shadow-sm"
+            title="Available wallet balance for voice minutes and dedicated numbers. Click to top up."
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 hover:border-cyan-400/50 rounded-xl cursor-pointer transition-all text-xs shrink-0 shadow-sm active:scale-[0.98]"
           >
-            <Coins className="h-3.5 w-3.5 text-chart-cyan shrink-0" />
-            <span className="text-slate-blue-300 font-medium hidden md:inline text-xs">Wallet:</span>
-            <span className="font-mono font-bold text-white tracking-wide text-[11px] sm:text-xs">
+            <Coins className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+            <span className="text-slate-400 font-semibold hidden md:inline text-[11px]">Wallet:</span>
+            <span className="font-mono font-black text-cyan-300 tracking-wide text-xs">
               ${walletBalance.toFixed(2)}
             </span>
-          </div>
+          </button>
 
           {/* 6-Digit Merchant Code Badge */}
-          <div
+          <button
             onClick={copyMerchantCode}
-            title="Callers to +1 (251) 357-1708 dial this 6-digit merchant code to reach you. Click to copy."
-            className="flex items-center gap-1 px-2 sm:px-2.5 py-1 sm:py-1.5 bg-navy-dark-elevated hover:bg-navy-dark-elevated/80 border border-chart-cyan/30 hover:border-chart-cyan rounded-lg cursor-pointer transition-colors text-xs shrink-0"
+            title="Callers to +1 (251) 357-1708 enter this code to reach you. Click to copy."
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] hover:border-cyan-500/40 rounded-xl cursor-pointer transition-all text-xs shrink-0 active:scale-[0.98]"
           >
-            <Hash className="h-3.5 w-3.5 text-chart-cyan shrink-0" />
-            <span className="text-slate-blue-300 font-medium hidden md:inline text-xs">Merchant:</span>
-            <span className="font-mono font-bold text-white tracking-wider text-[11px] sm:text-xs">{merchantCode}</span>
+            <Hash className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+            <span className="text-slate-400 font-semibold hidden md:inline text-[11px]">Merchant:</span>
+            <span className="font-mono font-bold text-white tracking-wider text-xs">{merchantCode}</span>
             {copied ? (
-              <Check className="h-3 w-3 text-accent-success ml-0.5" />
+              <Check className="h-3 w-3 text-emerald-400 ml-0.5" />
             ) : (
-              <Copy className="h-3 w-3 text-slate-blue-400 hover:text-white ml-0.5 hidden sm:inline" />
+              <Copy className="h-3 w-3 text-slate-400 hover:text-white ml-0.5 hidden sm:inline" />
             )}
-          </div>
-
-          {/* Notifications */}
-          <button className="hidden xs:flex relative p-1.5 rounded-md text-slate-blue-300 hover:text-white hover:bg-navy-dark-elevated transition-colors shrink-0">
-            <Bell className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
 
           {/* User Profile */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 pl-1.5 sm:pl-2.5 border-l border-navy-dark-border shrink-0">
+          <div className="flex items-center gap-2 pl-2 border-l border-white/[0.08] shrink-0">
             <div className="text-right hidden sm:block">
-              <p className="text-xs sm:text-sm font-medium text-white max-w-[90px] sm:max-w-[130px] truncate">
+              <p className="text-xs sm:text-sm font-semibold text-white max-w-[90px] sm:max-w-[130px] truncate">
                 {userName || 'User'}
               </p>
-              <p className="text-[10px] sm:text-xs text-slate-blue-400 truncate max-w-[130px] hidden md:block">
+              <p className="text-[10px] text-slate-400 truncate max-w-[130px] hidden md:block">
                 {userEmail}
               </p>
             </div>

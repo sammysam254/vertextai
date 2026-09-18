@@ -1,9 +1,22 @@
 import { createClient } from '@/lib/supabase/server';
 import { Panel } from '@/components/ui/Panel';
-import { Phone, Users, UserCheck, MessageSquare, PhoneCall, ArrowRight, ShieldCheck } from 'lucide-react';
+import {
+  Phone,
+  Users,
+  UserCheck,
+  MessageSquare,
+  PhoneCall,
+  ArrowRight,
+  ShieldCheck,
+  Radio,
+  Clock,
+  Sparkles,
+  Zap,
+} from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
 import { formatDuration, getRelativeTime } from '@/lib/utils';
+import { MerchantRoutingCard } from '@/components/dashboard/MerchantRoutingCard';
 
 export default async function DashboardOverviewPage() {
   const supabase = createClient();
@@ -84,173 +97,223 @@ export default async function DashboardOverviewPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 sm:space-y-8 pb-10">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1">Call Center Dashboard</h1>
-          <p className="text-xs sm:text-sm text-slate-blue-400">
-            Real-time activity and intelligence for Vertex AI
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+              Call Center Dashboard
+            </h1>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#10B981] animate-pulse" />
+          </div>
+          <p className="text-xs sm:text-sm text-slate-400 font-medium">
+            Real-time activity &amp; intelligence for <strong className="text-cyan-300 font-semibold">{organizationName}</strong>
           </p>
         </div>
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
           <Link
             href="/dashboard/dialer"
-            className="btn btn-primary inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-accent-primary hover:bg-accent-primary/90 text-white text-xs sm:text-sm font-medium rounded-lg shadow-sm"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs sm:text-sm font-bold rounded-xl shadow-[0_0_20px_rgba(0,212,255,0.3)] transition-all active:scale-[0.98]"
           >
-            <PhoneCall className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            Open Dialer
+            <PhoneCall className="h-4 w-4 text-cyan-200" />
+            <span>Open WebRTC Dialer</span>
           </Link>
           <Link
             href="/dashboard/inbox"
-            className="btn btn-secondary inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-navy-dark-elevated hover:bg-navy-dark text-slate-blue-200 border border-slate-blue-800 rounded-lg text-xs sm:text-sm"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white/[0.05] hover:bg-white/[0.09] text-slate-200 border border-white/10 hover:border-cyan-500/40 rounded-xl text-xs sm:text-sm font-semibold transition-all"
           >
-            <MessageSquare className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-            Send SMS
+            <MessageSquare className="h-4 w-4 text-cyan-400" />
+            <span>SMS Inbox</span>
           </Link>
         </div>
       </div>
 
-      {/* Merchant Routing ID Banner */}
-      <div className="bg-gradient-to-r from-accent-primary/20 via-navy-dark-panel to-navy-dark-panel border border-accent-primary/40 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-xl bg-accent-primary/20 border border-accent-primary/40 flex items-center justify-center text-accent-primary shrink-0">
-            <ShieldCheck className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs uppercase font-semibold tracking-wider text-accent-primary">
-                Your Dedicated Merchant Routing Line
-              </span>
-              <Badge variant="resolved">Active</Badge>
+      {/* Merchant Routing ID Interactive Banner */}
+      <MerchantRoutingCard merchantCode={merchantCode} />
+
+      {/* 4 Quick Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        {/* Total Calls */}
+        <div className="relative overflow-hidden rounded-2xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.08] hover:border-cyan-500/30 p-4 sm:p-5 transition-all shadow-md group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 blur-[40px] pointer-events-none group-hover:bg-cyan-500/20 transition-all" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Calls</span>
+            <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center">
+              <Phone className="h-4 w-4" />
             </div>
-            <p className="text-sm text-slate-blue-300 mt-0.5">
-              Callers dial <span className="font-mono text-white font-semibold">+1 (251) 357-1708</span> and enter your merchant code:
-            </p>
+          </div>
+          <p className="text-3xl font-black text-white font-mono tracking-tight">{totalCalls}</p>
+          <div className="flex items-center gap-1.5 mt-2 text-[11px] text-cyan-300 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+            <span>Inbound &amp; Outbound Telecom</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 self-start sm:self-auto">
-          <div className="px-4 py-2 bg-navy-dark border border-accent-primary/50 rounded-lg text-center">
-            <span className="text-[10px] text-slate-blue-400 uppercase tracking-wider block">Merchant Code</span>
-            <span className="text-xl sm:text-2xl font-mono font-extrabold text-chart-cyan tracking-wider">
-              {merchantCode || '100001'}
-            </span>
+        {/* Active Agents */}
+        <div className="relative overflow-hidden rounded-2xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.08] hover:border-emerald-500/30 p-4 sm:p-5 transition-all shadow-md group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 blur-[40px] pointer-events-none group-hover:bg-emerald-500/20 transition-all" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Agents</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+              <UserCheck className="h-4 w-4" />
+            </div>
           </div>
-          <Link
-            href="/dashboard/settings/phone"
-            className="text-xs text-accent-primary hover:underline self-center"
-          >
-            Configure &rarr;
-          </Link>
+          <p className="text-3xl font-black text-white font-mono tracking-tight">{activeAgents}</p>
+          <div className="flex items-center gap-1.5 mt-2 text-[11px] text-emerald-400 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Ready for Live Audio Transfer</span>
+          </div>
         </div>
+
+        {/* Contacts */}
+        <div className="relative overflow-hidden rounded-2xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.08] hover:border-blue-500/30 p-4 sm:p-5 transition-all shadow-md group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 blur-[40px] pointer-events-none group-hover:bg-blue-500/20 transition-all" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Contacts</span>
+            <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center">
+              <Users className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-white font-mono tracking-tight">{totalContacts}</p>
+          <div className="flex items-center gap-1.5 mt-2 text-[11px] text-slate-400 font-medium">
+            <span>Verified Customers &amp; Leads</span>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="relative overflow-hidden rounded-2xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.08] hover:border-purple-500/30 p-4 sm:p-5 transition-all shadow-md group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 blur-[40px] pointer-events-none group-hover:bg-purple-500/20 transition-all" />
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Messages</span>
+            <div className="w-8 h-8 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center">
+              <MessageSquare className="h-4 w-4" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-white font-mono tracking-tight">{totalMessages}</p>
+          <div className="flex items-center gap-1.5 mt-2 text-[11px] text-purple-300 font-medium">
+            <span>2-Way Conversational SMS</span>
+          </div>
+        </div>
+
       </div>
 
-      {/* Real Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <Panel className="p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-slate-blue-400 text-xs sm:text-sm font-medium">Total Calls</p>
-            <Phone className="h-4 w-4 sm:h-5 sm:w-5 text-accent-primary" />
-          </div>
-          <p className="text-2xl sm:text-3xl font-bold text-white">{totalCalls}</p>
-          <p className="text-[11px] sm:text-xs text-slate-blue-400 mt-1 sm:mt-2">Inbound & Outbound</p>
-        </Panel>
-        <Panel className="p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-slate-blue-400 text-xs sm:text-sm font-medium">Active Agents</p>
-            <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-accent-success" />
-          </div>
-          <p className="text-2xl sm:text-3xl font-bold text-white">{activeAgents}</p>
-          <p className="text-[11px] sm:text-xs text-slate-blue-400 mt-1 sm:mt-2">Ready for transfers</p>
-        </Panel>
-        <Panel className="p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-slate-blue-400 text-xs sm:text-sm font-medium">Contacts</p>
-            <Users className="h-4 w-4 sm:h-5 sm:w-5 text-accent-cyan" />
-          </div>
-          <p className="text-2xl sm:text-3xl font-bold text-white">{totalContacts}</p>
-          <p className="text-[11px] sm:text-xs text-slate-blue-400 mt-1 sm:mt-2">Customers & Leads</p>
-        </Panel>
-        <Panel className="p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-slate-blue-400 text-xs sm:text-sm font-medium">Messages</p>
-            <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 text-accent-purple" />
-          </div>
-          <p className="text-2xl sm:text-3xl font-bold text-white">{totalMessages}</p>
-          <p className="text-[11px] sm:text-xs text-slate-blue-400 mt-1 sm:mt-2">Inbound & Outbound SMS</p>
-        </Panel>
-      </div>
-
-      {/* System Status & Live Actions */}
-      <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
-        <Panel className="p-4 sm:p-6 lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">Recent Call Activity</h2>
-            <Link href="/dashboard/calls" className="text-xs text-accent-primary hover:underline inline-flex items-center gap-1">
-              View All <ArrowRight className="h-3 w-3" />
+      {/* System Status & Recent Calls Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+        
+        {/* Recent Call Activity Card */}
+        <div className="rounded-2xl bg-white/[0.03] border border-white/[0.08] p-5 sm:p-6 lg:col-span-2 shadow-lg">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#00E5FF] animate-ping" />
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">Recent Call Activity</h2>
+            </div>
+            <Link
+              href="/dashboard/calls"
+              className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 hover:underline inline-flex items-center gap-1 transition-colors"
+            >
+              <span>View Logs</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
 
           {recentCalls.length === 0 ? (
-            <div className="text-center py-10 text-slate-blue-400">
-              <Phone className="h-10 w-10 mx-auto mb-2 opacity-40" />
-              <p className="text-sm">No calls placed yet today.</p>
-              <p className="text-xs text-slate-blue-500 mt-1">Use the dialer to place an outbound call or dial +1 (251) 357-1708.</p>
+            <div className="text-center py-12 px-4 rounded-xl bg-white/[0.02] border border-dashed border-white/[0.08]">
+              <div className="w-12 h-12 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mx-auto mb-3 text-cyan-400">
+                <Phone className="h-5 w-5 opacity-60" />
+              </div>
+              <p className="text-sm font-semibold text-white">No calls recorded today</p>
+              <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                Ready to make a call? Use the in-browser WebRTC dialer or invite callers to dial +1 (251) 357-1708.
+              </p>
+              <Link
+                href="/dashboard/dialer"
+                className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-xs font-bold border border-cyan-500/40 transition-colors"
+              >
+                <PhoneCall className="h-3.5 w-3.5" />
+                <span>Launch Dialer</span>
+              </Link>
             </div>
           ) : (
-            <div className="divide-y divide-slate-blue-800/60">
+            <div className="divide-y divide-white/[0.06]">
               {recentCalls.map((call: any) => (
-                <div key={call.id} className="py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-accent-primary/10 flex items-center justify-center text-accent-primary">
+                <div key={call.id} className="py-3.5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
                       <PhoneCall className="h-4 w-4" />
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-white">
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-bold text-white truncate">
                         {call.contacts?.name || (call.type === 'voice_in' ? call.from_number : call.to_number)}
                       </p>
-                      <p className="text-xs text-slate-blue-400">
-                        {call.type === 'voice_in' ? 'Inbound' : 'Outbound'} • {getRelativeTime(call.created_at)}
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {call.type === 'voice_in' ? 'Inbound Call' : 'Outbound Call'} • {getRelativeTime(call.created_at)}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <Badge variant={call.status === 'completed' ? 'resolved' : call.status === 'in-progress' ? 'in-call' : 'default'}>
                       {call.status}
                     </Badge>
-                    <p className="text-xs text-slate-blue-400 mt-1">{formatDuration(call.duration_seconds || 0)}</p>
+                    <p className="text-[11px] text-slate-400 mt-1 font-mono">{formatDuration(call.duration_seconds || 0)}</p>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </Panel>
+        </div>
 
-        <Panel className="p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <ShieldCheck className="h-5 w-5 text-accent-success" />
-            <h2 className="text-lg font-semibold text-white">System Status</h2>
+        {/* Live Telecom Infrastructure Status */}
+        <div className="rounded-2xl bg-white/[0.03] border border-white/[0.08] p-5 sm:p-6 shadow-lg space-y-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5 text-emerald-400" />
+            <h2 className="text-base sm:text-lg font-bold text-white tracking-tight">Platform Status</h2>
           </div>
-          <div className="space-y-4 text-sm">
-            <div className="flex items-center justify-between p-3 bg-navy-dark-elevated rounded-lg">
-              <span className="text-slate-blue-300">Voice IVR</span>
-              <span className="text-xs font-semibold text-accent-success bg-accent-success/10 px-2 py-0.5 rounded">Active</span>
+
+          <div className="space-y-2.5 text-xs">
+            <div className="flex items-center justify-between p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl">
+              <span className="text-slate-300 font-medium">Voice WebRTC Gateway</span>
+              <span className="inline-flex items-center gap-1 font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Operational
+              </span>
             </div>
-            <div className="flex items-center justify-between p-3 bg-navy-dark-elevated rounded-lg">
-              <span className="text-slate-blue-300">Twilio Webhooks</span>
-              <span className="text-xs font-semibold text-accent-success bg-accent-success/10 px-2 py-0.5 rounded">Connected</span>
+
+            <div className="flex items-center justify-between p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl">
+              <span className="text-slate-300 font-medium">Twilio Carrier Bridge</span>
+              <span className="inline-flex items-center gap-1 font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Connected
+              </span>
             </div>
-            <div className="flex items-center justify-between p-3 bg-navy-dark-elevated rounded-lg">
-              <span className="text-slate-blue-300">Shared Line</span>
-              <span className="text-xs font-mono text-white">+1 (251) 357-1708</span>
+
+            <div className="flex items-center justify-between p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl">
+              <span className="text-slate-300 font-medium">Monthly Free Allowance</span>
+              <span className="font-bold text-cyan-300 font-mono">
+                3 Mins Active
+              </span>
             </div>
-            <div className="flex items-center justify-between p-3 bg-navy-dark-elevated rounded-lg">
-              <span className="text-slate-blue-300">Merchant Routing</span>
-              <span className="text-xs font-mono text-accent-primary font-bold">100001</span>
+
+            <div className="flex items-center justify-between p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl">
+              <span className="text-slate-300 font-medium">AI Speech Engine</span>
+              <span className="font-mono text-white font-semibold">Groq Llama 3 (450ms)</span>
             </div>
           </div>
-        </Panel>
+
+          <div className="pt-2">
+            <Link
+              href="/dashboard/wallboards"
+              className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-bold border border-cyan-500/30 transition-colors"
+            >
+              <Radio className="h-3.5 w-3.5 animate-pulse" />
+              <span>Open Supervisor Wallboards</span>
+            </Link>
+          </div>
+        </div>
+
       </div>
     </div>
   );

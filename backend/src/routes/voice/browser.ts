@@ -120,9 +120,9 @@ export const browserVoiceRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(200).type('text/xml').send(twiml);
     }
 
-    let orgId = body.organizationId || query.organizationId;
-    if (!orgId && from && typeof from === 'string' && from.includes('merchant_')) {
-      const match = from.match(/merchant_([0-9a-fA-F-]+)/);
+    let orgId = body.organizationId || query.organizationId || body.orgId || query.orgId;
+    if (!orgId && from && typeof from === 'string') {
+      const match = from.match(/(?:merchant_|org_)?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/);
       if (match && match[1]) {
         orgId = match[1];
       }

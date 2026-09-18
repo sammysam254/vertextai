@@ -12,27 +12,37 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export const BACKEND_API_URL = 'https://vertextai-3lit.onrender.com';
+export const BACKEND_API_URL =
+  process.env.NEXT_PUBLIC_API_URL &&
+  !process.env.NEXT_PUBLIC_API_URL.includes('localhost') &&
+  !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api')
+    ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')
+    : 'https://vertextai-3lit.onrender.com';
 
 /**
- * Resolve full backend API URL for client and server calls
+ * Resolve full backend API URL for client, mobile (Capacitor), and server calls
  */
 export function getApiEndpoint(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
 
   if (typeof window !== 'undefined') {
+    // In Capacitor native mobile wrapper, always point to live cloud backend
+    const isCapacitor = Boolean(
+      (window as any).Capacitor?.isNativePlatform?.() ||
+      window.location.protocol === 'capacitor:' ||
+      window.location.hostname === 'localhost' && /Android|iPhone|iPad/i.test(navigator.userAgent)
+    );
+    if (isCapacitor) {
+      return `${BACKEND_API_URL}${cleanPath}`;
+    }
+
+    // Local dev browser: proxy through Next.js rewrite
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return cleanPath;
     }
-    return `${BACKEND_API_URL}${cleanPath}`;
-  }
 
-  if (
-    process.env.NEXT_PUBLIC_API_URL &&
-    !process.env.NEXT_PUBLIC_API_URL.includes('localhost') &&
-    !process.env.NEXT_PUBLIC_API_URL.includes('callpulse-api')
-  ) {
-    return `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}${cleanPath}`;
+    // Production web (vertext.site, custom domains, Render web)
+    return `${BACKEND_API_URL}${cleanPath}`;
   }
 
   return `${BACKEND_API_URL}${cleanPath}`;
